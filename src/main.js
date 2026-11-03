@@ -31,6 +31,7 @@ import { loadMap } from './map-data.js';
 import { createSim } from './sim.js';
 import { createGarage } from './garage.js';
 import { createDogs } from './dogs.js';
+import { createVenues } from './venues.js';
 import { gpuInfo, createGpuTimer, instrumentPasses, createBenchmark } from './perf.js';
 import { createInput } from './input.js';
 import { createOverlays } from './overlay.js';
@@ -203,6 +204,27 @@ async function init() {
       scene.add(walker.root); renderPass.scene = scene; state.mode = 'walk'; document.body.classList.remove('inside');
     }),
     rest: (h, e, text) => ui.fade(() => { state.hours = (state.hours + h) % 24; game.wallet.energy = Math.min(100, game.wallet.energy + e); ui.toast(`+${h >= 1 ? h + ' hour' : h * 60 + ' min'}`, text, 'hourglass'); }, 'Time passes…'),
+    // walk-in places bigger than a room (src/venues.js): the metro station and the mall
+    enterVenue: (kind, opts = {}) => ui.fade(() => {
+      W.street = opts.street; const sp = venues.enter(kind, opts); W.venue = true;
+      W.pos.set(sp.x, 0, sp.z); W.y = sp.y; W.vy = 0; W.ground = true; W.ladder = W.mantle = null; W.yaw = sp.yaw; camCtl.walkYaw = sp.yaw;
+      venues.scene.add(walker.root); renderPass.scene = venues.scene;
+      state.mode = 'interior'; document.body.classList.add('inside');
+      ui.setZone({ name: venues.name + (kind === 'metro' ? ' Metro' : ''), kn: kind === 'metro' ? 'ನಮ್ಮ ಮೆಟ್ರೋ' : 'ಮಾಲ್' });
+    }),
+    exitVenue: () => ui.fade(() => {
+      const s = W.street; venues.leave(); W.venue = false; W.y = 0; W.vy = 0;
+      W.pos.set(s.x + s.nx * 1.2, 0, s.z + s.nz * 1.2); W.yaw = Math.atan2(s.nx, s.nz); camCtl.walkYaw = W.yaw;
+      scene.add(walker.root); renderPass.scene = scene; state.mode = 'walk'; document.body.classList.remove('inside');
+    }),
+    enterStation: (s) => {
+      const nr = world.nearestRoad(s.ex, s.ez, 40), l = nr ? Math.hypot(nr.x - s.ex, nr.z - s.ez) || 1 : 1;
+      hooks.enterVenue('metro', { station: s, street: { x: s.ex, z: s.ez, nx: nr ? (nr.x - s.ex) / l : 0, nz: nr ? (nr.z - s.ez) / l : 1 } });
+    },
+    boardTrain: (from) => ui.menu({
+      title: 'Board the train', kn: 'ನಮ್ಮ ಮೆಟ್ರೋ', foot: 'Purple Line · your token was taken at the gate',
+      items: world.stations.filter((s) => s !== from).map((s) => ({ name: `To ${s.name}`, price: null, desc: 'Stand on the right. Mind the gap.', onPick: () => { venues.leave(); W.venue = false; W.y = 0; scene.add(walker.root); hooks.travel(s, from); } })),
+    }),
     // a real ride: platform → viaduct/tunnel → arrival, then out onto the street
     travel: (st, from) => ui.fade(() => {
       state.mode = 'metro'; walker.root.visible = false; document.body.classList.add('inside');
@@ -226,6 +248,8 @@ async function init() {
   const garage = createGarage({ scene, world, tow, player, game, ui, audio, navTo: (t) => (t ? navTo(t) : nav.clear()) });
   tow.onImpound = () => garage.impounded();
   game.addAction((w) => garage.action(w));
+  const venues = createVenues({ world, ui, audio, game, hooks });
+  game.addAction((w) => { const m = venues.mall; if (!m) return null; const d = Math.hypot(w.x - m.x, w.z - m.z); return d < 3 ? { d, label: `go into ${m.name}`, run: () => hooks.enterVenue('mall', { street: m }) } : null; });
   // street dogs: pet them, feed them, befriend one; some chase you at night (src/dogs.js)
   const dogs = createDogs(scene, world, ui, audio, game.wallet);
   game.addAction((w) => dogs.action(w));
@@ -235,7 +259,7 @@ async function init() {
     onNearMiss(d) { game.wallet.respect = Math.max(0, game.wallet.respect - 2); ui.toast(`You nearly hit ${d.name}`, 'It jumped clear. The chai stall saw everything.', 'paw'); },
   };
   const places = [
-    garage.place,
+    garage.place, ...(venues.mall ? [{ name: venues.mall.name, x: venues.mall.x, z: venues.mall.z, icon: 'city' }] : []),
     ...world.stations.map((s) => ({ name: `${s.name} Metro`, x: s.ex, z: s.ez, icon: 'metro' })),
     ...(world.vidhana ? [{ name: 'Vidhana Soudha', x: world.vidhana.fx, z: world.vidhana.fz, icon: 'landmark' }] : []),
     ...(world.stadium ? [{ name: 'Chinnaswamy Stadium', x: world.stadium.x, z: world.stadium.z + world.stadium.r + 15, icon: 'cricket' }] : []),
@@ -537,7 +561,7 @@ async function init() {
     ctl.run = input.down('run');
     if (active() && (p.rx || p.ry)) { if (state.mode === 'drive') camCtl.yaw -= p.rx * 0.05; else camCtl.walkYaw -= p.rx * 0.05; camCtl.pitch = clamp(camCtl.pitch + p.ry * 0.03, -0.5, 1.25); camCtl.idle = 0; }
   }
-  const ctx = () => ({ hours: state.hours, day: state.day, rush: (state.hours >= 8.5 && state.hours < 11) || (state.hours >= 17.5 && state.hours < 21), raining: weather.state.rain > 0.3, mode: state.mode, player, walker: W, interior, place: W.place, menu: W.place && interior.menu, running: state.mode !== 'drive' && ctl.run && W.speed > 3, extraPrompt: extraPrompt() });
+  const ctx = () => ({ venue: W.venue ? venues : null, hours: state.hours, day: state.day, rush: (state.hours >= 8.5 && state.hours < 11) || (state.hours >= 17.5 && state.hours < 21), raining: weather.state.rain > 0.3, mode: state.mode, player, walker: W, interior, place: W.place, menu: W.place && interior.menu, running: state.mode !== 'drive' && ctl.run && W.speed > 3, extraPrompt: extraPrompt() });
   function extraPrompt() {
     if (state.mode === 'walk' && W.pos.distanceTo(player.pos) < player.radius + 2.6) return `Press ${K('vehicle')} to get in your ${VEHICLE_STATS[player.type].label.toLowerCase()}`;
     return null;
@@ -694,7 +718,7 @@ async function init() {
       if (!camCtl.dragging && camCtl.idle > 1.2 && W.speed > 1 && ctl.fwd > 0) camCtl.walkYaw = angleLerp(camCtl.walkYaw, W.yaw, 1 - Math.exp(-1.5 * dt));
       const inside = state.mode === 'interior';
       if (state.camera === 'first') firstCam(W.pos.x, W.pos.z, 1.62 + W.y, camCtl.walkYaw);
-      else chaseCam(dt, W.pos.x, W.pos.z, camCtl.walkYaw, (inside ? 2.6 : 3.8) * Math.min(camCtl.zoom, inside ? 1.2 : 3.2), 1.7 + W.y, 1.45 + W.y, inside ? (v) => interior.clampCam(v) : null);
+      else chaseCam(dt, W.pos.x, W.pos.z, camCtl.walkYaw, (inside ? 2.6 : 3.8) * Math.min(camCtl.zoom, inside ? 1.2 : 3.2), 1.7 + W.y, 1.45 + W.y, inside ? (v) => (W.venue ? venues.clampCam(v) : interior.clampCam(v)) : null);
       camera.fov = damp(camera.fov, 60, 3, dt);
     }
     if (ui.prefs.reduce) shake = 0;
@@ -712,7 +736,7 @@ async function init() {
     const target = l > 0 ? (ctl.run && game.wallet.energy > 5 ? 4.6 : 1.9) * tired : 0;
     W.speed = damp(W.speed, target, 8, dt);
     if (l > 0) { mx /= l; mz /= l; W.dir = [mx, mz]; W.yaw = angleLerp(W.yaw, Math.atan2(mx, mz), 1 - Math.exp(-12 * dt)); }
-    const outside = state.mode !== 'interior';
+    const outside = state.mode !== 'interior' || !!W.venue, G = W.venue ? venues : world;
     // ---- climbing over a ledge: a short scripted move up and in
     if (W.mantle) {
       const m = W.mantle; m.t += dt / 0.45; const k = Math.min(1, m.t), e = k * k * (3 - 2 * k);
@@ -733,8 +757,11 @@ async function init() {
       return;
     }
     const p = { x: W.pos.x + W.dir[0] * W.speed * dt, z: W.pos.z + W.dir[1] * W.speed * dt };
+    // escalators carry you along
+    if (W.venue) { const belt = venues.conveyor(W.pos.x, W.pos.z, W.y); if (belt) p.z += belt * dt; }
     let hit = null;
     if (!outside) interior.collide(p, 0.35);
+    else if (W.venue) hit = venues.collide(p, 0.35, W.y);
     else {
       hit = world.collide(p, 0.35, W.y);
       if (W.y < 1) { traffic.collidePlayer(p, 0.35); people.collideCows(p, 0.35); }
@@ -747,7 +774,7 @@ async function init() {
       if (active() && W.ground && input.down('jump') && !W.jumpHeld) { W.vy = 6.4; W.ground = false; }
       W.jumpHeld = input.down('jump');
       W.vy -= 20 * dt; W.y += W.vy * dt;
-      const g = world.groundAt(W.pos.x, W.pos.z, W.y);
+      const g = G.groundAt(W.pos.x, W.pos.z, W.y);
       if (W.y <= g) {
         if (W.vy < -13) { game.wallet.energy = Math.max(0, game.wallet.energy - 8); if (once('ouch', 4)) ui.toast('Ouch!', 'That was a long drop. Your knees disagree.', 'bandage'); shake = 0.6; }
         W.y = g; W.vy = 0; W.ground = true;
@@ -756,14 +783,14 @@ async function init() {
       const top = hit && hit.item && !['tree', 'pole', 'pillar', 'edge'].includes(hit.tag) ? hit.item.h : null;
       if (top !== null && (ctl.fwd || 0) > 0 && top - W.y > 0.5 && top - W.y < (W.ground ? 1.35 : 2.4)) {
         const tx = W.pos.x + W.dir[0] * 0.9, tz = W.pos.z + W.dir[1] * 0.9;
-        if (world.inside(hit.item, tx, tz)) W.mantle = { t: 0, x0: W.pos.x, z0: W.pos.z, x1: tx, z1: tz, y0: W.y, y1: top };
+        if (G.inside(hit.item, tx, tz)) W.mantle = { t: 0, x0: W.pos.x, z0: W.pos.z, x1: tx, z1: tz, y0: W.y, y1: top };
       }
       // grab a ladder you're facing
-      if ((ctl.fwd || 0) > 0) for (const L of world.ladders) {
+      if ((ctl.fwd || 0) > 0) for (const L of G.ladders) {
         if (Math.abs(L.x - W.pos.x) > 1 || Math.abs(L.z - W.pos.z) > 1 || W.y < L.y0 - 0.3 || W.y > L.y1 - 0.3) continue;
         if (Math.hypot(L.x - W.pos.x, L.z - W.pos.z) < 0.85 && W.dir[0] * -L.nx + W.dir[1] * -L.nz > 0.5) { W.ladder = L; W.vy = 0; W.pos.x = L.x; W.pos.z = L.z; break; }
       }
-      if (world.vidhanaTop && !W.peak && W.y > world.vidhanaTop.y - 1 && Math.hypot(W.pos.x - world.vidhanaTop.x, W.pos.z - world.vidhanaTop.z) < 8) {
+      if (G.vidhanaTop && !W.peak && W.y > world.vidhanaTop.y - 1 && Math.hypot(W.pos.x - world.vidhanaTop.x, W.pos.z - world.vidhanaTop.z) < 8) {
         W.peak = true; ui.card('landmark', 'Top of Vidhana Soudha', 'You climbed the dome. All of Cubbon Park below you. (Security is on its way.)', 'Peak Bengaluru moment');
       }
     } else { W.y = 0; W.vy = 0; W.ground = true; }
@@ -882,7 +909,7 @@ async function init() {
       } else ui.nav(null);
     }
     phone.update(dt, dh, rawDt);
-    interior.update(dt, atm.hor);
+    interior.update(dt, atm.hor); if (W.venue && !state.paused) venues.update(dt, t, W, phone);
     weather.update(dt, t, camera.position, atm, audio);
     // smoke from a damaged engine; respect slowly returns with clean driving
     if (state.mode === 'drive' && player.health < 55 && Math.random() < dt * (player.health < 30 ? 14 : 6)) {
@@ -940,7 +967,7 @@ async function init() {
   console.info(`[silicon-streets] shaders ready in ${Math.round(performance.now() - tc)} ms`);
   frame();
   // debug handle for automated checks: __game.step(n) advances n frames synchronously
-  window.__game = { phone, garage, dogs, sim, state, player, world, actions, weather, camera, keys: input.held, input, overlays, ui, life, audio, renderer, game, W, hooks, traffic, prof, scene, composer, sun, bloom, gtao, quality, get phys() { return phys; }, flood, edges, nav, people, signals, camCtl, tow, step: (n = 1, dt = 1 / 30) => { for (let i = 0; i < n; i++) tick(dt); } };
+  window.__game = { venues, phone, garage, dogs, sim, state, player, world, actions, weather, camera, keys: input.held, input, overlays, ui, life, audio, renderer, game, W, hooks, traffic, prof, scene, composer, sun, bloom, gtao, quality, get phys() { return phys; }, flood, edges, nav, people, signals, camCtl, tow, step: (n = 1, dt = 1 / 30) => { for (let i = 0; i < n; i++) tick(dt); } };
 }
 
 init().catch((e) => {

@@ -220,6 +220,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
       if (G && ctx.player.type === ride.kind && ride.state === 'riding' && dist(p, ride.to) < RING_R + 5) return { label: G.dropLabel, run: () => dropoff(ctx) };
       return null;
     }
+    if (ctx.mode === 'interior' && ctx.venue) return ctx.venue.action(ctx.walker.pos, ctx.walker.y);
     if (ctx.mode === 'interior') {
       const w = ctx.walker.pos;
       let best = null;
@@ -235,7 +236,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
       const consider = (d, a) => { if (!best || d < best.d) best = { d, a }; };
       for (const d of world.doors) { const dd = dist(w, d); if (dd < 2.4) consider(dd, { label: `enter ${d.name}`, run: () => hooks.enterInterior(d) }); }
       for (const v of world.vendors) { const dd = dist(w, v); if (dd < 2.6) { const m = VENDOR_MENUS[v.type]; consider(dd, { label: `buy from the ${m.title.toLowerCase()}`, run: () => menuFor(m.title, m.kn, m.items, 'Street food, Bengaluru prices') }); } }
-      for (const s of world.stations) { const dd = Math.hypot(w.x - s.ex, w.z - s.ez); if (dd < 4) consider(dd, { label: `take Namma Metro from ${s.name}`, run: () => metroMenu(s) }); }
+      for (const s of world.stations) { const dd = Math.hypot(w.x - s.ex, w.z - s.ez); if (dd < 4) consider(dd, hooks.enterStation ? { label: `go into ${s.name} Metro station`, run: () => hooks.enterStation(s) } : { label: `take Namma Metro from ${s.name}`, run: () => metroMenu(s) }); }
       for (const fn of extra) { const a = fn(w, ctx); if (a) consider(a.d, a); }
       if (ride.kind === 'walk') {
         const G = WALK[ride.sub];
@@ -408,7 +409,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
   }
 
   return {
-    addAction: (fn) => extra.push(fn),
+    addAction: (fn) => extra.push(fn), menuFor,
     walkGigs: Object.entries(WALK).map(([id, G]) => ({ id, app: G.app, icon: G.icon, word: G.word })),
     // ask for an on-foot job soon (after "leave it at the garage")
     walkGigNow: () => { if (ride.state === 'cooldown') ride.timer = Math.min(ride.timer, 1.5); },
