@@ -16,7 +16,7 @@ export function createRealism({ world, ui, audio, player, game, hooks }) {
 
   // ---------- fuel stations along the main roads ----------
   const bunks = [];
-  const roads = world.roads.filter((r) => r.drive && MAJOR.has(r.k) && r.pts.length > 1);
+  const roads = world.roads.filter((r) => r.drive && !r.l && MAJOR.has(r.k) && r.pts.length > 1);
   for (let tries = 0; tries < 400 && bunks.length < 7; tries++) {
     const r = roads[Math.floor(rng() * roads.length)], i = Math.floor(rng() * (r.pts.length - 1));
     const [ax, az] = r.pts[i], [bx, bz] = r.pts[i + 1], len = Math.hypot(bx - ax, bz - az); if (len < 30) continue;
@@ -48,7 +48,7 @@ export function createRealism({ world, ui, audio, player, game, hooks }) {
   const breakers = [], bgrid = new Map(), BC = 40, key = (x, z) => Math.floor(x / BC) + ',' + Math.floor(z / BC);
   const humps = { painted: [], plain: [] };
   for (const r of world.roads) {
-    if (!r.drive || MAJOR.has(r.k) || r.pts.length < 2) continue;
+    if (!r.drive || r.l || MAJOR.has(r.k) || r.pts.length < 2) continue;
     for (const end of [0, 1]) {
       const p = end ? r.pts[r.pts.length - 1] : r.pts[0], q = end ? r.pts[r.pts.length - 2] : r.pts[1];
       if (!world.junctionR(p) || rng() > 0.35) continue;

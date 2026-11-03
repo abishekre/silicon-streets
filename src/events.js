@@ -43,7 +43,7 @@ export function createEvents({ scene, world, ui, audio, game, state }) {
   function start(focus) {
     const near = [];
     G.grid.query(focus.x, focus.z, 500, near);
-    const cands = near.map((n) => n.i).filter((i) => { const e = G.edges[i], d = Math.hypot(e.ax - focus.x, e.az - focus.z); return MAJOR.test(e.k) && d > 150 && d < 450 && world.inMap(e.ax, e.az, 100); });
+    const cands = near.map((n) => n.i).filter((i) => { const e = G.edges[i], d = Math.hypot(e.ax - focus.x, e.az - focus.z); return MAJOR.test(e.k) && !e.l && d > 150 && d < 450 && world.inMap(e.ax, e.az, 100); });
     if (!cands.length) return;
     const e0 = cands[Math.floor(Math.random() * cands.length)], kind = Object.keys(KINDS)[Math.floor(Math.random() * 3)], K = KINDS[kind];
     const path = routeFrom(e0, 500); if (path.length < 3) return;

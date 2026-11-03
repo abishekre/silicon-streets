@@ -41,7 +41,7 @@ export function createLife(scene, world, ui, audio) {
 
   // ---------- BMTC bus stops with people waiting ----------
   const stops = [];
-  const major = world.roads.filter((r) => r.drive && ['primary', 'secondary'].includes(r.k));
+  const major = world.roads.filter((r) => r.drive && !r.l && ['primary', 'secondary'].includes(r.k));
   const shelterParts = [];
   for (let i = 0; i < 300 && stops.length < 16; i++) {
     const r = major[Math.floor(rng() * major.length)], j = Math.floor(rng() * (r.pts.length - 1));

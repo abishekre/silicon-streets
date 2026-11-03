@@ -44,7 +44,7 @@ test(`traffic and people: ${FRAMES} frames without overlaps`, { timeout: 600000 
         if (v.off || v.hidden || v.x > 1e5) continue;
         if (!Number.isFinite(v.x) || !Number.isFinite(v.z)) bad++;
         for (const p of people.peds) {
-          if (p.x > 1e5 || p.down || p.tumble) continue;
+          if (p.x > 1e5 || p.down || p.tumble || v.y > 2.2) continue; // (a car up on a flyover is not "on" the person below)
           const dx = p.x - v.x, dz = p.z - v.z; if (dx * dx + dz * dz > 36) continue;
           const along = dx * v.fx + dz * v.fz, lat = dx * v.fz - dz * v.fx;
           if (Math.abs(along) < v.long * 0.8 && Math.abs(lat) < v.hw * 0.8) pedInside++;

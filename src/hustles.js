@@ -20,7 +20,7 @@ export function createHustles({ scene, world, game, ui, audio, state, walker: W,
   const coinG = new THREE.CylinderGeometry(0.45, 0.45, 0.08, 20).rotateX(Math.PI / 2);
   const ringG = new THREE.RingGeometry(1.4, 1.7, 32).rotateX(-Math.PI / 2), ringMat = new THREE.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: 0.8, depthWrite: false });
   let spawnT = 3, doing = null, earnedToday = 0;
-  const edges = world.graph.edges;
+  const edges = world.graph.edges.filter((e) => !e.l); // nothing happens up on a flyover
 
   function spawn(focus) {
     for (let tries = 0; tries < 30; tries++) {

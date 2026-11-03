@@ -130,7 +130,13 @@ def main(srcs, dst):
             elif ow and hw in ('primary', 'secondary', 'tertiary'):
                 w = w * 0.7
             if t.get('junction') == 'roundabout': ow = 1
-            roads.append({'k': hw, 'n': t.get('name', ''), 'w': round(w, 1), 'o': ow, 'p': flat(pts)})
+            road = {'k': hw, 'n': t.get('name', ''), 'w': round(w, 1), 'o': ow, 'p': flat(pts)}
+            # flyovers: a bridge (or a raised layer) is drawn as an elevated deck in the game
+            lay = t.get('layer', '0')
+            lay = int(lay) if lay.lstrip('-').isdigit() else 0
+            if hw not in ('footway', 'path', 'cycleway', 'steps') and (t.get('bridge') in ('yes', 'viaduct') or lay > 0):
+                road['l'] = max(1, min(2, lay))
+            roads.append(road)
         elif hw == 'pedestrian' and closed:
             areas.append({'k': 'plaza', 'n': t.get('name', ''), 'p': flat(clean(pts, True))})
         elif t.get('railway') == 'subway' and (t.get('bridge') or (t.get('layer', '0').lstrip('-').isdigit() and int(t.get('layer', '0')) > 0)):

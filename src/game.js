@@ -102,7 +102,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
     return { x: nr.x + nr.dz * o * side, z: nr.z - nr.dx * o * side };
   }
   function roadMid(name) {
-    const rs = world.roads.filter((r) => r.n === name && r.drive);
+    const rs = world.roads.filter((r) => r.n === name && r.drive && !r.l);
     if (!rs.length) return null;
     const len = (r) => r.pts.reduce((a, p, i) => i ? a + Math.hypot(p[0] - r.pts[i - 1][0], p[1] - r.pts[i - 1][1]) : 0, 0);
     const r = rs.sort((a, b) => len(b) - len(a))[0];

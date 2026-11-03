@@ -158,6 +158,7 @@ export class Player {
     this.group.add(this.spot, this.spot.target);
     this.odometer = 0;
     this.health = 100; this.broken = false; this.dentX = 0; this.dentZ = 0;
+    this.elev = 0; this.pitch = 0; // up on a flyover: deck height and slope (main.js)
     this.setType('auto');
   }
   setType(type, occupied = true) {
@@ -246,8 +247,8 @@ export class Player {
     for (const w of this.wheels) { w.mesh.rotation.x = this.spin; if (w.front) w.pivot.rotation.y = -this.steer * 0.45; }
   }
   syncMesh(surface = 'road', fs = 0) {
-    this.group.position.set(this.pos.x, 0, this.pos.z);
-    this.group.rotation.y = this.heading;
+    this.group.position.set(this.pos.x, this.elev, this.pos.z);
+    this.group.rotation.set(-this.pitch, this.heading, 0, 'YXZ');
     this.bodyPivot.rotation.z = this.lean + this.dentZ; this.bodyPivot.rotation.x = this.dentX;
     this.bodyPivot.position.y = Math.abs(Math.sin(this.bump * 18)) * 0.12 * this.bump + (surface === 'grass' ? Math.sin(performance.now() * 0.03) * 0.015 * Math.min(1, Math.abs(fs) / 5) : 0);
   }
@@ -335,7 +336,7 @@ export function createTraffic(scene, world, audio) {
     vehicles.push({ type: k, idx: i, id: 0, off: false, e: 0, s: 0, lat: 0, li: 0, speed: 0, max, x: 1e6, z: 1e6, fx: 1, fz: 0, yaw: 0, steer: 0, honkCd: rng.range(2, 8), r: sh.r, long: sh.long,
       col, hidden: false, mass: MASS[k], hw: HALF[k], pref: Math.floor(rng() * 3), route: [], ri: 0, nx: -1, pe: -1, pl: 0, pr: 0, inJ: -1, jE: -1, jN: -1, jl: 0, turn: 'S', eta: 0,
       mp: new Float64Array(14), ind: 0, indT: 0, filter: 0, park: 0, wait: 0, stuckT: 0, knockT: 0, kx: 0, kz: 0, kyaw: 0, dazed: 0, greenT: 0, red: false,
-      ox: 0, oz: 0, squeeze: 0, blk: -1, ld: -1, backT: 0, blockT: 0, rec: 0, redraw: false, retry: 0, retryRoute: 0, hk: -1, hl: null, needRoute: true, loop: null, stop: 0, dest: -1 });
+      y: 0, up: false, pitch: 0, ox: 0, oz: 0, squeeze: 0, blk: -1, ld: -1, backT: 0, blockT: 0, rec: 0, redraw: false, retry: 0, retryRoute: 0, hk: -1, hl: null, needRoute: true, loop: null, stop: 0, dest: -1 });
   }
   for (const k of Object.keys(inst)) if (inst[k].body.instanceColor) inst[k].body.instanceColor.needsUpdate = true;
   // mixed order, so thinning traffic out (night, Calm liveliness) removes every type evenly
@@ -442,14 +443,18 @@ export function createTraffic(scene, world, audio) {
   const CELL = 12, GX = B.x1 - 60, GZ = B.z1 - 60, GW = Math.ceil((B.x2 - B.x1 + 120) / CELL), GH = Math.ceil((B.z2 - B.z1 + 120) / CELL);
   const cellOf = (x, z) => { const i = Math.floor((x - GX) / CELL), j = Math.floor((z - GZ) / CELL); return i < 0 || j < 0 || i >= GW || j >= GH ? -1 : i + j * GW; };
   const mkHash = () => ({ c: new Array(GW * GH), used: [] });
-  const vh = mkHash(), ph = mkHash();
+  // vehicles up on a flyover live in their own hash: they never see the traffic, people or cows underneath
+  const vh = mkHash(), ph = mkHash(), vu = mkHash(), hashOf = (v) => (v.up ? vu : vh);
   function hput(H, o) { const k = cellOf(o.x, o.z); o.hk = k; if (k < 0) { o.hl = null; return; } let l = H.c[k]; if (!l) H.c[k] = l = []; if (!l.length) H.used.push(l); l.push(o); o.hl = l; }
   function hclear(H) { for (const l of H.used) l.length = 0; H.used.length = 0; }
   function hmove(v) {
-    const k = cellOf(v.x, v.z);
-    if (k === v.hk && (v.hl || k < 0)) return;
+    // height on a flyover deck (edges carry the deck height at each end), and the slope for the body
+    const e = edges[v.e];
+    if (e && e.l) { const t = v.s / e.len; v.y = e.ya + (e.yb - e.ya) * (t < 0 ? 0 : t > 1 ? 1 : t); v.pitch = Math.atan2(e.yb - e.ya, e.len); } else { v.y = 0; v.pitch = 0; }
+    const up = v.y > 2.2, k = cellOf(v.x, v.z);
+    if (k === v.hk && up === v.up && (v.hl || k < 0)) return;
     if (v.hl) { const l = v.hl, i = l.indexOf(v); if (i >= 0) { l[i] = l[l.length - 1]; l.pop(); } }
-    hput(vh, v);
+    v.up = up; hput(hashOf(v), v);
   }
   function near(H, x, z, out, reach = 1) {
     out.length = 0;
@@ -578,7 +583,7 @@ export function createTraffic(scene, world, audio) {
       if (v.type === 'bus' && !MAJOR.has(e.k)) continue;
       // busy main roads get most of the traffic; side streets a trickle
       if (!MAJOR.has(e.k) && Math.random() < 0.55) continue;
-      if (e.len < 14) continue;
+      if (e.len < 14 || e.l) continue; // nobody appears out of thin air on a flyover
       const s = 5 + Math.random() * (e.len - 12), li = Math.floor(Math.random() * nLanes(e)), lat = laneLat(e, li, v);
       const sx = e.ax + e.dx * s + e.dz * lat, sz = e.az + e.dz * s - e.dx * lat;
       if (hyp(sx - px, sz - pz) < 30) continue;
@@ -662,7 +667,7 @@ export function createTraffic(scene, world, audio) {
       if (v.off || v.x > 1e5) continue;
       if ((v.id + frameN) % 3 && !(v.knockT > 0) && !(v.squeeze > 0) && !(v.rec > 0)) continue;
       if (v.rec > 0) v.rec--;
-      near(vh, v.x, v.z, nb2);
+      near(hashOf(v), v.x, v.z, nb2);
       for (const o of nb2) {
         if (o === v || o.off) continue;
         const reach = v.r + o.r + v.long + o.long, dx = o.x - v.x, dz = o.z - v.z;
@@ -681,7 +686,7 @@ export function createTraffic(scene, world, audio) {
     let n = 0;
     for (const v of vehicles) {
       if (v.off || v.x > 1e5) continue;
-      near(vh, v.x, v.z, nb2);
+      near(hashOf(v), v.x, v.z, nb2);
       for (const o of nb2) if (o.id > v.id && !o.off && Math.abs(o.x - v.x) < 16 && Math.abs(o.z - v.z) < 16 && sep(v, o) < -0.05) n++;
     }
     return n;
@@ -724,18 +729,18 @@ export function createTraffic(scene, world, audio) {
   }
 
   let started = false;
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1), pv = new THREE.Vector3();
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1), pv = new THREE.Vector3(), eu = new THREE.Euler();
   let honkTimer = 1, frameN = 0, routeBudget = 0;
   const zero = new THREE.Vector3(0, 0, 0), hide = new THREE.Matrix4().compose(new THREE.Vector3(0, -50, 0), new THREE.Quaternion(), zero);
   const stopProfile = (d) => d <= 0.25 ? 0 : Math.sqrt(9 * (d - 0.25));
   function draw(v) {
     // (the body itself is placed by present(), once per frame)
     q.setFromAxisAngle(up, v.yaw + v.steer);
-    m.compose(pv.set(v.x + v.fx * (5.5 + v.long), 0.1, v.z + v.fz * (5.5 + v.long)), q, one); beams.setMatrixAt(v.id, m);
+    m.compose(pv.set(v.x + v.fx * (5.5 + v.long), v.y + 0.1, v.z + v.fz * (5.5 + v.long)), q, one); beams.setMatrixAt(v.id, m);
     if (v.ind && (now * 2.6) % 1 < 0.55) {
       const sx = v.fz * v.ind * v.hw, sz = -v.fx * v.ind * v.hw, f = v.long + v.r * 0.8;
-      m.compose(pv.set(v.x + sx + v.fx * f, 0.78, v.z + sz + v.fz * f), q, one); blink.setMatrixAt(v.id * 2, m);
-      m.compose(pv.set(v.x + sx - v.fx * f, 0.78, v.z + sz - v.fz * f), q, one); blink.setMatrixAt(v.id * 2 + 1, m);
+      m.compose(pv.set(v.x + sx + v.fx * f, v.y + 0.78, v.z + sz + v.fz * f), q, one); blink.setMatrixAt(v.id * 2, m);
+      m.compose(pv.set(v.x + sx - v.fx * f, v.y + 0.78, v.z + sz - v.fz * f), q, one); blink.setMatrixAt(v.id * 2 + 1, m);
     } else { blink.setMatrixAt(v.id * 2, hide); blink.setMatrixAt(v.id * 2 + 1, hide); }
   }
   function hideV(v) { v.hidden = true; beams.setMatrixAt(v.id, hide); blink.setMatrixAt(v.id * 2, hide); blink.setMatrixAt(v.id * 2 + 1, hide); }
@@ -749,7 +754,8 @@ export function createTraffic(scene, world, audio) {
       const dx = v.x - focus.x, dz = v.z - focus.z, d = Math.hypot(dx, dz);
       if (d > 25 && dx * (focus.fx || 0) + dz * (focus.fz || 0) < -25) continue;
       const I = inst[v.type], near = d < NEAR_D, mesh = near ? I.body : I.far, i = near ? nN[v.type]++ : nF[v.type]++;
-      q.setFromAxisAngle(up, v.yaw + v.steer); m.compose(pv.set(v.x, 0, v.z), q, one);
+      if (v.pitch) q.setFromEuler(eu.set(-v.pitch, v.yaw + v.steer, 0, 'YXZ')); else q.setFromAxisAngle(up, v.yaw + v.steer);
+      m.compose(pv.set(v.x, v.y, v.z), q, one);
       mesh.setMatrixAt(i, m); mesh.setColorAt(i, v.col); I.lights.setMatrixAt(nL[v.type]++, m);
     }
     for (const k in inst) {
@@ -768,8 +774,8 @@ export function createTraffic(scene, world, audio) {
     // rush hour fills the roads, late night empties them
     const active = Math.round(vehicles.length * (focus.density ?? 0.75) * (focus.live ? focus.live.traffic : 0.7));
     for (let i = 0; i < vehicles.length; i++) vehicles[i].off = i >= active;
-    hclear(vh);
-    for (const v of vehicles) { v.hl = null; if (!v.off) hput(vh, v); }
+    hclear(vh); hclear(vu);
+    for (const v of vehicles) { v.hl = null; if (!v.off) hput(hashOf(v), v); }
     hclear(ph);
     if (peds) for (const p of peds) if (p.road && p.x < 1e5) hput(ph, p);
     if (!started) { started = true; for (const v of vehicles) if (!v.off) spawn(v, focus.x, focus.z, 15, 220); }
@@ -834,7 +840,7 @@ export function createTraffic(scene, world, audio) {
       if (v.squeeze > 0) { v.squeeze -= dtv; latT = kerbLat(e0, v); }
       // ---- look around once: leaders, oncoming traffic on narrow streets, obstacles to pass, the gap in the next lane
       const look = 8 + v.speed * 1.6 + v.long;
-      near(vh, v.x, v.z, nb);
+      near(hashOf(v), v.x, v.z, nb);
       let lead = null, leadA = Infinity, oncoming = false, passCap = Infinity, laneBlocked = false;
       const tl = want !== v.li ? laneLat(e0, v.li + (want > v.li ? 1 : -1), v) : 0, dLat = latT - v.lat;
       for (const o of nb) {
@@ -930,7 +936,7 @@ export function createTraffic(scene, world, audio) {
       // honk at the one who hasn't noticed the light went green
       if (v.greenT && now - v.greenT > 0.8) { if (v.speed < 0.6 && lead && leadG < 6 && Math.random() < 0.6) { audio && audio.hornAt(v.type, v.x, v.z, 0.8); ev && ev.honked && ev.honked(v); } v.greenT = 0; }
       // ---- people on the road ahead (or about to step into our path): slow, then stop
-      if (ph.used.length) for (const p of near(ph, v.x, v.z, pn)) {
+      if (!v.up && ph.used.length) for (const p of near(ph, v.x, v.z, pn)) {
         const dx = p.x - v.x, dz = p.z - v.z, along = dx * v.fx + dz * v.fz;
         if (along < -1 || along > look + 6) continue;
         const side = dx * v.fz - dz * v.fx, ps = side + ((p.vx || 0) * v.fz - (p.vz || 0) * v.fx) * 1.5, w = v.hw + 1.1;
@@ -939,6 +945,7 @@ export function createTraffic(scene, world, audio) {
       // you, a walker, the tow truck
       let blocked = false;
       for (const b of blockers) {
+        if (Math.abs((b.y || 0) - v.y) > 2.5) continue; // you up on the flyover, them underneath (or the other way round)
         const dx = b.x - v.x, dz = b.z - v.z, along = dx * v.fx + dz * v.fz, lat = Math.abs(dx * -v.fz + dz * v.fx);
         if (along > 0 && along < look + 2 && lat < 2.4) { target = along - v.long < 5 ? 0 : Math.min(target, 3); blocked = true; if (v.speed < 0.5) b.hits = (b.hits || 0) + 1; }
       }
@@ -994,10 +1001,10 @@ export function createTraffic(scene, world, audio) {
     }
   }
 
-  function collidePlayer(p, r) {
+  function collidePlayer(p, r, y = 0) {
     let hit = null;
     for (const v of vehicles) {
-      if (Math.abs(v.x - p.x) > 10 || Math.abs(v.z - p.z) > 10) continue;
+      if (Math.abs(v.x - p.x) > 10 || Math.abs(v.z - p.z) > 10 || Math.abs((v.y || 0) - y) > 2.5) continue;
       const n = v.long ? 3 : 1;
       for (let k = 0; k < n; k++) {
         const off = v.long ? (k - 1) * v.long : 0;
@@ -1108,7 +1115,7 @@ export function createParked(scene, world) {
     }
   }
   for (const r of world.roads) {
-    if (!['residential', 'unclassified', 'tertiary'].includes(r.k)) continue;
+    if (!['residential', 'unclassified', 'tertiary'].includes(r.k) || r.l) continue; // nobody parks on a flyover
     for (let i = 0; i < r.pts.length - 1; i++) {
       const [ax, az] = r.pts[i], [bx, bz] = r.pts[i + 1], len = Math.hypot(bx - ax, bz - az);
       if (len < 25 || rng() > 0.35) continue;

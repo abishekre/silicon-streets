@@ -269,9 +269,12 @@ async function init() {
     onNip(d) { game.wallet.energy = Math.max(0, game.wallet.energy - 4); if (state.mode === 'drive' && player.type === 'scooter') { player.steer += (Math.random() - 0.5) * 1.2; player.vel.multiplyScalar(0.92); } ui.toast(`${d.name} nipped at you`, state.mode === 'drive' ? 'Slow down or stop and it will lose interest.' : 'Stop walking and it will back off.', 'paw'); },
     onNearMiss(d) { game.wallet.respect = Math.max(0, game.wallet.respect - 2); ui.toast(`You nearly hit ${d.name}`, 'It jumped clear. The chai stall saw everything.', 'paw'); },
   };
+  // away from a named road, the place is the nearest neighbourhood (not "Central Bengaluru" in Kalyan Nagar)
+  const KN_AREA = { 'MG Road': 'ಎಂ.ಜಿ. ರಸ್ತೆ', Indiranagar: 'ಇಂದಿರಾನಗರ', Koramangala: 'ಕೋರಮಂಗಲ', Banaswadi: 'ಬಾಣಸವಾಡಿ', 'Kalyan Nagar': 'ಕಲ್ಯಾಣ ನಗರ', Kammanahalli: 'ಕಮ್ಮನಹಳ್ಳಿ', Domlur: 'ದೊಮ್ಮಲೂರು', Madiwala: 'ಮಡಿವಾಳ', Ulsoor: 'ಹಲಸೂರು' };
   const travel = createTravel({ world, game, ui, state, player, walker: W, realism, tow, origin: data.origin, later: () => ({ missions, hustles }) });
   const flag = (k, v) => { try { if (v === undefined) return localStorage.getItem('blr.' + k) === '1'; localStorage.setItem('blr.' + k, v ? '1' : '0'); } catch (e) { return false; } return v; };
   // property and startup money (src/empire.js)
+  world.setZoneFallback((x, z) => { let b = null, bd = 1600; for (const d of travel.districts) { const k = Math.hypot(d.x - x, d.z - z); if (k < bd) { bd = k; b = d; } } return b && { name: b.name, kn: KN_AREA[b.name] || '' }; });
   const empire = createEmpire({ scene, world, game, ui, audio, state, player, walker: W, districts: travel.districts });
   // processions that block the road, Rajyotsava flags (src/events.js)
   const events = createEvents({ scene, world, ui, audio, game, state });
@@ -472,6 +475,7 @@ async function init() {
   function toggleVehicle() {
     if (state.mode === 'drive') {
       if (Math.abs(player.speed) > 3) { ui.toast('Slow down first', 'Stop before you get out.', 'warning'); return; }
+      if (player.elev > 0.5) { ui.toast('Not on the flyover', 'No stopping, no walking on the flyover. Get down to the road first.', 'warning'); return; }
       player.park();
       const lx = Math.cos(player.heading), lz = -Math.sin(player.heading);
       const p = { x: player.pos.x + lx * (player.radius + 0.7), z: player.pos.z + lz * (player.radius + 0.7) };
@@ -618,7 +622,7 @@ async function init() {
     crash(v, tag, hit) {
       const p = player.pos, k = Math.max(0, v - 3), sx = p.x - (hit ? hit.nx : 0) * player.radius, sz = p.z - (hit ? hit.nz : 0) * player.radius;
       const SPEC = {
-        building: [3.2, 'concrete', 'crash'], landmark: [3.2, 'concrete', 'crash'], edge: [3, 'concrete', 'crash'], deck: [3, 'concrete', 'crash'],
+        building: [3.2, 'concrete', 'crash'], landmark: [3.2, 'concrete', 'crash'], edge: [3, 'concrete', 'crash'], deck: [3, 'concrete', 'crash'], embankment: [3, 'concrete', 'crash'],
         pole: [2.8, 'metal', 'clang'], pillar: [3.4, 'concrete', 'crash'], tree: [2.2, 'leaves', 'thud'], parked: [2, 'glass', 'crash'],
         vehicle: [2.4, 'glass', 'crash'], barricade: [1.4, 'drum', 'thud'], bench: [1.2, 'wood', 'thud'], prop: [1.6, 'wood', 'thud'], cow: [0.8, null, 'thud'],
       };
@@ -663,7 +667,7 @@ async function init() {
   let phys = null;
   import('./physics.js').then((m) => m.createPhysics(scene, world)).then((p) => { phys = p; console.info('[silicon-streets] physics ready'); })
     .catch((e) => console.warn('[silicon-streets] physics unavailable, using simple collisions', e));
-  const npcCollide = { collidePlayer: (p, r) => traffic.collidePlayer(p, r) || people.collideCows(p, r) };
+  const npcCollide = { collidePlayer: (p, r) => traffic.collidePlayer(p, r, player.elev) || (player.elev > 2.5 ? null : people.collideCows(p, r)) };
 
   // ---------- photo mode ----------
   let orbit = null;
@@ -752,6 +756,33 @@ async function init() {
     camLook.set(camera.position.x + Math.sin(yaw) * Math.cos(a) * 10, h + Math.sin(a) * 10, camera.position.z + Math.cos(yaw) * Math.cos(a) * 10);
     camera.lookAt(camLook);
   }
+  // flyovers: on the ground you drive under the decks; roll onto a ramp at its foot and you ride the deck up.
+  // Up there the parapets keep you on, and you only meet the traffic on your level (src/physics.js).
+  function flyover() {
+    const p = player.pos;
+    if (state.mode !== 'drive') { player.elev = player.pitch = 0; return; }
+    const d = world.deckAt(p.x, p.z, player.elev, 0.3);
+    if (!player.elev) {
+      if (d && d.y > 0.02 && d.y < 0.8) player.elev = d.y; // the foot of a ramp
+      else { player.pitch = 0; return; }
+    }
+    if (d) {
+      const prev = player.elev; player.elev = d.y < 0.03 ? 0 : d.y;
+      const v = Math.hypot(player.vel.x, player.vel.y);
+      player.pitch = v > 0.3 ? Math.atan2(player.elev - prev, v * (1 / 30)) * 0.5 + player.pitch * 0.5 : player.pitch;
+      player.pitch = Math.max(-0.2, Math.min(0.2, player.pitch));
+      return;
+    }
+    // past the edge of the deck: low on a ramp you just roll off; higher up the parapet stops you
+    const e = world.deckAt(p.x, p.z, player.elev, 6);
+    if (!e || player.elev < 0.8) { player.elev = player.pitch = 0; return; }
+    const nx = (p.x - e.x) / (e.d || 1), nz = (p.z - e.z) / (e.d || 1), lim = e.hw + 0.2;
+    const vn = player.vel.x * nx + player.vel.y * nz;
+    const vx = vn > 0 ? player.vel.x - nx * vn * 1.3 : player.vel.x, vz = vn > 0 ? player.vel.y - nz * vn * 1.3 : player.vel.y;
+    p.x = e.x + nx * lim; p.z = e.z + nz * lim; player.vel.set(vx, vz); player.elev = e.y;
+    phys && phys.nudge(p.x, p.z, vx, vz);
+    if (vn > 5) ev.crash(vn, 'deck');
+  }
   function updateCamera(dt) {
     if (state.photo) { orbit.update(); return; }
     if (state.mode === 'metro') { ride.update(dt, camera); if (ride.scene) renderPass.scene = ride.scene; return; }
@@ -765,8 +796,8 @@ async function init() {
     camCtl.idle += dt;
     if (state.mode === 'drive') {
       if (!camCtl.dragging && camCtl.idle > 1.5 && Math.abs(player.speed) > 1) { camCtl.yaw = damp(camCtl.yaw, 0, 2, dt); camCtl.pitch = damp(camCtl.pitch, 0.2, 2, dt); }
-      if (state.camera === 'first') firstCam(player.pos.x, player.pos.z, (player.type === 'car' ? 1.3 : player.type === 'scooter' ? 1.85 : 1.62) + player.bodyPivot.position.y, player.heading + camCtl.yaw);
-      else chaseCam(dt, player.pos.x, player.pos.z, player.heading + camCtl.yaw, (player.type === 'car' ? 7.5 : player.type === 'scooter' ? 5.2 : 6.2) * camCtl.zoom, 2.2, 1.4);
+      if (state.camera === 'first') firstCam(player.pos.x, player.pos.z, (player.type === 'car' ? 1.3 : player.type === 'scooter' ? 1.85 : 1.62) + player.bodyPivot.position.y + player.elev, player.heading + camCtl.yaw);
+      else chaseCam(dt, player.pos.x, player.pos.z, player.heading + camCtl.yaw, (player.type === 'car' ? 7.5 : player.type === 'scooter' ? 5.2 : 6.2) * camCtl.zoom, 2.2 + player.elev, 1.4 + player.elev);
       camera.fov = damp(camera.fov, 58 + Math.min(14, Math.abs(player.speed) * 0.5), 3, dt);
     } else {
       if (!camCtl.dragging && camCtl.idle > 1.2 && W.speed > 1 && ctl.fwd > 0) camCtl.walkYaw = angleLerp(camCtl.walkYaw, W.yaw, 1 - Math.exp(-1.5 * dt));
@@ -932,14 +963,15 @@ async function init() {
       if (phys) {
         // Rapier moves your vehicle, shoves what you hit, and streams colliders around you
         phys.step(dt, { player, mode: state.mode, traffic, ev, focus: f });
+        flyover();
         if (state.mode === 'drive') {
-          const cow = people.collideCows(player.pos, player.radius);
+          const cow = player.elev > 2.5 ? null : people.collideCows(player.pos, player.radius);
           if (cow) { const vn = player.vel.x * cow.nx + player.vel.y * cow.nz; if (vn < 0) { player.vel.x -= cow.nx * vn * 1.25; player.vel.y -= cow.nz * vn * 1.25; if (-vn > 3.5) ev.crash(-vn, 'cow', cow); } }
           player.syncMesh(player.surface, player.speed);
         }
         mark('physics');
       }
-      const blockers = [{ x: player.pos.x, z: player.pos.z, speed: Math.abs(player.speed), r: player.radius, isPlayer: state.mode === 'drive', vx: player.vel.x, vz: player.vel.y }];
+      const blockers = [{ x: player.pos.x, z: player.pos.z, y: player.elev, speed: Math.abs(player.speed), r: player.radius, isPlayer: state.mode === 'drive', vx: player.vel.x, vz: player.vel.y }];
       if (state.mode === 'walk') blockers.push({ x: W.pos.x, z: W.pos.z, speed: 0 });
       blockers.push(...tow.blockers, ...events.blockers);
       // rush hour fills the roads, late night empties them; floods slow everyone down
@@ -991,7 +1023,7 @@ async function init() {
     updateCamera(dt); mark('misc');
 
     if (state.mode !== 'interior') {
-      const z = world.zoneAt(f.x, f.z); ui.setZone(z);
+      const z = world.zoneAt(f.x, f.z, state.mode === 'drive' ? player.elev : 0); ui.setZone(z);
       if (z.name !== lastZoneName) { lastZoneName = z.name; if (z.name === 'Vidhana Soudha') ui.toast('Look up!', `Drag the mouse up (or press ${K('camera')} for first person) to read the inscription.`, 'landmark'); }
     }
     uiT -= rawDt;

@@ -5,7 +5,7 @@
 // knocks and tumbles from physics, and flood depths. Buffers go back and forth without being copied.
 // If the worker isn't available, everything runs here as before.
 
-const VS = 8, PS = 4; // floats per vehicle (x, z, yaw, fx, fz, speed, flags, steer) and per person (x, z, yaw, down)
+const VS = 9, PS = 4; // floats per vehicle (x, z, yaw, fx, fz, speed, flags, steer, y) and per person (x, z, yaw, down)
 
 // where each piece lives in the packed buffer; the same on both sides because the meshes are made the same way
 export function simLayout(meshes, colored, nV, nP) {
@@ -26,7 +26,7 @@ export function packSim(buf, L, meshes, colored, vehicles, peds) {
   meshes.forEach((m, k) => { buf[k] = m.count; buf.set(m.instanceMatrix.array.subarray(0, m.count * 16), L.mat[k]); });
   colored.forEach((m, k) => buf.set(m.instanceColor.array.subarray(0, m.count * 3), L.col[k]));
   let o = L.veh;
-  for (const v of vehicles) { buf[o] = v.x; buf[o + 1] = v.z; buf[o + 2] = v.yaw; buf[o + 3] = v.fx; buf[o + 4] = v.fz; buf[o + 5] = v.speed; buf[o + 6] = (v.off ? 1 : 0) | (v.hidden ? 2 : 0); buf[o + 7] = v.steer; o += VS; }
+  for (const v of vehicles) { buf[o] = v.x; buf[o + 1] = v.z; buf[o + 2] = v.yaw; buf[o + 3] = v.fx; buf[o + 4] = v.fz; buf[o + 5] = v.speed; buf[o + 6] = (v.off ? 1 : 0) | (v.hidden ? 2 : 0); buf[o + 7] = v.steer; buf[o + 8] = v.y; o += VS; }
   o = L.ped;
   for (const p of peds) { buf[o] = p.x; buf[o + 1] = p.z; buf[o + 2] = p.yaw; buf[o + 3] = p.down; o += PS; }
 }
@@ -67,7 +67,7 @@ export function createSim({ traffic, people, trafficGroup, peopleGroup, ev, audi
       m.instanceColor.clearUpdateRanges(); m.instanceColor.addUpdateRange(0, m.count * 3); m.instanceColor.needsUpdate = true;
     });
     let o = L.veh;
-    for (const v of V) { v.x = b[o]; v.z = b[o + 1]; v.yaw = b[o + 2]; v.fx = b[o + 3]; v.fz = b[o + 4]; v.speed = b[o + 5]; v.off = (b[o + 6] & 1) > 0; v.hidden = (b[o + 6] & 2) > 0; v.steer = b[o + 7]; o += VS; }
+    for (const v of V) { v.x = b[o]; v.z = b[o + 1]; v.yaw = b[o + 2]; v.fx = b[o + 3]; v.fz = b[o + 4]; v.speed = b[o + 5]; v.off = (b[o + 6] & 1) > 0; v.hidden = (b[o + 6] & 2) > 0; v.steer = b[o + 7]; v.y = b[o + 8]; v.up = v.y > 2.2; o += VS; }
     o = L.ped;
     for (const p of P) { if (!p.tumble) { p.x = b[o]; p.z = b[o + 1]; p.yaw = b[o + 2]; } p.down = b[o + 3]; o += PS; }
     hits = msg.hits; if (msg.stats) stats = msg.stats;

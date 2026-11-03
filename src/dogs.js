@@ -19,7 +19,7 @@ export function createDogs(scene, world, ui, audio, wallet) {
   // the tail is its own mesh so it can wag
   const tailG = part(new THREE.CylinderGeometry(0.02, 0.03, 0.3, 4).translate(0, 0.15, 0), '#fff');
   const COATS = ['#c8a165', '#8d6e4a', '#3b2f2a', '#e8dcc6', '#a0522d'];
-  const edges = world.graph.edges.filter((e) => e.len > 30 && world.inMap(e.ax, e.az, 200));
+  const edges = world.graph.edges.filter((e) => e.len > 30 && !e.l && world.inMap(e.ax, e.az, 200));
   const dogs = [];
   for (let i = 0; i < 30 && edges.length; i++) {
     const e = edges[Math.floor(rng() * edges.length)], s = rng() * e.len, lat = e.w / 2 + 1.8;

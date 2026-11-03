@@ -20,6 +20,9 @@ export async function createPhysics(scene, world) {
   W.timestep = 1 / 60;
   W.createCollider(RAPIER.ColliderDesc.cuboid(4000, 0.5, 4000).setTranslation(0, -0.5, 0).setFriction(0.8));
   const tagOf = new Map(); // collider handle -> { tag, item?, npc?, prop? }
+  // collision groups (membership << 16 | filter). Walls, poles, props: everything but group 8, so that while you are up
+  // on a flyover (your filter becomes group 8 only) you touch the traffic up there and nothing on the ground below.
+  const GROUND = 0xfff7ffff, YOU = 0x0004fffd, YOU_UP = 0x00040008;
 
   // ---------- static world, streamed around the focus point
   const statics = new Map(), near = [];
@@ -41,7 +44,7 @@ export async function createPhysics(scene, world) {
         cols.push(W.createCollider(RAPIER.ColliderDesc.cuboid(len / 2 + 0.15, h / 2, 0.3).setTranslation((ax + bx) / 2, y0 + h / 2, (az + bz) / 2).setRotation(yawQ(Math.atan2(bx - ax, bz - az) + Math.PI / 2)), body));
       }
     }
-    for (const c of cols) tagOf.set(c.handle, { tag: it.tag, item: it });
+    for (const c of cols) { c.setCollisionGroups(GROUND); tagOf.set(c.handle, { tag: it.tag, item: it }); }
     statics.set(it, { body, cols });
   }
   function dropStatic(it) {
@@ -68,16 +71,17 @@ export async function createPhysics(scene, world) {
     P.body = W.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(player.pos.x, hy + 0.02, player.pos.z).setRotation(yawQ(player.heading))
       .enabledRotations(false, true, false).enabledTranslations(true, false, true).setAngularDamping(2.5).setLinearDamping(0.05));
     P.col = W.createCollider(RAPIER.ColliderDesc.cuboid(hx, hy, hz).setMass(mass).setFriction(0.15).setRestitution(0.25)
-      .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min).setCollisionGroups(0x0004fffd)
+      .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min).setCollisionGroups(YOU)
       .setActiveEvents(RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS).setContactForceEventThreshold(mass * 30), P.body);
     P.type = player.type; P.mass = mass; P.hy = hy; P.hz = hz;
   }
 
   // ---------- traffic close to you
   const npcBodies = new Map();
-  function syncTraffic(traffic, fx, fz) {
+  function syncTraffic(traffic, fx, fz, level = 0) {
     for (const v of traffic.vehicles) {
-      const nearMe = !v.off && Math.abs(v.x - fx) < NEAR_NPC && Math.abs(v.z - fz) < NEAR_NPC;
+      // only traffic on your level gets a body: the cars under the flyover are not in your way
+      const nearMe = !v.off && Math.abs(v.x - fx) < NEAR_NPC && Math.abs(v.z - fz) < NEAR_NPC && Math.abs((v.y || 0) - level) < 2.5;
       let b = npcBodies.get(v);
       if (!nearMe) {
         if (b && !v.knockT) { tagOf.delete(b.col.handle); W.removeRigidBody(b.body); npcBodies.delete(v); }
@@ -135,7 +139,7 @@ export async function createPhysics(scene, world) {
     if (free(x, z, 0.3)) props.push({ kind: 'bin', x, z, y: 0, q: new THREE.Quaternion() });
   }
   for (const r of world.roads) {
-    if (!['primary', 'secondary', 'trunk'].includes(r.k) || rng() > 0.12 || r.pts.length < 2) continue;
+    if (!['primary', 'secondary', 'trunk'].includes(r.k) || r.l || rng() > 0.12 || r.pts.length < 2) continue;
     const [ax, az] = r.pts[0], [bx, bz] = r.pts[1], len = Math.hypot(bx - ax, bz - az); if (len < 20) continue;
     const dx = (bx - ax) / len, dz = (bz - az) / len, lat = r.hw - 0.6;
     for (let k = 0; k < 4; k++) { const s = len / 2 + k * 2.5, x = ax + dx * s + dz * lat, z = az + dz * s - dx * lat; if (free(x, z, 0.2)) props.push({ kind: 'cone', x, z, y: 0, q: new THREE.Quaternion() }); }
@@ -162,7 +166,7 @@ export async function createPhysics(scene, world) {
       const S = PROP[p.kind];
       p.body = W.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(p.x, p.y + (S.hy || S.cyl[0]), p.z).setRotation(p.q).setCcdEnabled(true).setLinearDamping(0.3).setAngularDamping(0.4).setCanSleep(true));
       const d = S.cyl ? RAPIER.ColliderDesc.cylinder(S.cyl[0], S.cyl[1]) : RAPIER.ColliderDesc.cuboid(S.hx, S.hy, S.hz);
-      p.col = W.createCollider(d.setMass(S.mass).setFriction(0.6).setRestitution(0.3), p.body);
+      p.col = W.createCollider(d.setMass(S.mass).setFriction(0.6).setRestitution(0.3), p.body); p.col.setCollisionGroups(GROUND);
       p.body.sleep(); tagOf.set(p.col.handle, { tag: 'prop', prop: p }); live.add(p);
     }
     for (const p of live) {
@@ -230,7 +234,9 @@ export async function createPhysics(scene, world) {
       P.body.setLinvel({ x: player.vel.x, y: 0, z: player.vel.y }, true);
       P.body.setAngvel({ x: 0, y: dy / dt + P.yawKick, z: 0 }, true);
     }
-    syncTraffic(traffic, f.x, f.z);
+    const up = (player.elev || 0) > 0.3; // (below the embankment walls, which start at 1 m)
+    if (P.up !== up) { P.col.setCollisionGroups(up ? YOU_UP : YOU); P.up = up; }
+    syncTraffic(traffic, f.x, f.z, player.elev || 0);
     const want = { x: player.vel.x, z: player.vel.y };
 
     // one step per frame, so the arcade model and the body never disagree for a frame
@@ -305,5 +311,7 @@ export async function createPhysics(scene, world) {
   return {
     step: (dt, o) => { const h = step(dt, o); readLoose(); return h; },
     tumble, props, get bodies() { return W.bodies.len(); }, world: W,
+    // put your vehicle somewhere else on the spot (the flyover parapet pushing you back)
+    nudge(x, z, vx, vz) { if (!P.body) return; P.body.setTranslation({ x, y: P.hy + 0.02, z }, true); P.body.setLinvel({ x: vx, y: 0, z: vz }, true); P.lx = x; P.lz = z; },
   };
 }

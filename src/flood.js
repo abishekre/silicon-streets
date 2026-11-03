@@ -15,7 +15,7 @@ export function createFlood(scene, world) {
     zones.push({ x: n.x, z: n.z, r: 10 + rng() * 10, max: 0.22 + rng() * 0.25, level: 0 });
   }
   // and some stretches of road beside parks
-  const parkRoads = world.roads.filter((r) => r.drive && r.pts.length > 1);
+  const parkRoads = world.roads.filter((r) => r.drive && !r.l && r.pts.length > 1);
   for (let i = 0; i < 200 && zones.length < 22; i++) {
     const r = parkRoads[Math.floor(rng() * parkRoads.length)], p = r.pts[Math.floor(rng() * r.pts.length)];
     if (!ok(p[0], p[1]) || world.surfaceAt(p[0] + r.hw + 6, p[1]) !== 'grass') continue;

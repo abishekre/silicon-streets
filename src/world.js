@@ -154,10 +154,42 @@ export function buildWorld(scene, data, opts = {}) {
   }
   const junctionR = (p) => { const n = nodes.get(nk(p)); return n && n.deg >= 3 ? n.maxW / 2 + 1.2 : 0; };
 
+  // ---------- flyovers: bridge roads (r.l, from tools/osm2game.py) become raised decks ----------
+  // Bridge ways that meet end to end form one chain. Each chain rises from the ground at its open ends (where it
+  // meets ordinary roads) to a deck in the middle. Short bridges (over a storm drain) stay at ground level.
+  {
+    const bridges = roads.filter((r) => r.l > 0 && r.drive);
+    const ends = new Map(), parent = new Map(bridges.map((r) => [r, r]));
+    const find = (r) => { while (parent.get(r) !== r) { parent.set(r, parent.get(parent.get(r))); r = parent.get(r); } return r; };
+    for (const r of bridges) for (const p of [r.pts[0], r.pts[r.pts.length - 1]]) { const k = nk(p); if (!ends.has(k)) ends.set(k, []); ends.get(k).push(r); }
+    for (const [, rs] of ends) for (let i = 1; i < rs.length; i++) parent.set(find(rs[i]), find(rs[0]));
+    const chains = new Map(); for (const r of bridges) { const c = find(r); if (!chains.has(c)) chains.set(c, []); chains.get(c).push(r); }
+    for (const rs of chains.values()) {
+      const adj = new Map(); let total = 0, layer = 1;
+      const link = (a, b, l) => { if (!adj.has(a)) adj.set(a, []); adj.get(a).push([b, l]); };
+      for (const r of rs) {
+        layer = Math.max(layer, r.l);
+        for (let i = 0; i < r.pts.length - 1; i++) { const l = Math.hypot(r.pts[i + 1][0] - r.pts[i][0], r.pts[i + 1][1] - r.pts[i][1]); link(nk(r.pts[i]), nk(r.pts[i + 1]), l); link(nk(r.pts[i + 1]), nk(r.pts[i]), l); total += l; }
+      }
+      if (total < 80) { for (const r of rs) r.l = 0; continue; }
+      // distance from the nearest open end, along the chain (a small Dijkstra)
+      const dist = new Map(), open = [];
+      for (const r of rs) for (const p of [r.pts[0], r.pts[r.pts.length - 1]]) { const k = nk(p); if (ends.get(k).length === 1 && !dist.has(k)) { dist.set(k, 0); open.push(k); } }
+      while (open.length) {
+        let bi = 0; for (let i = 1; i < open.length; i++) if (dist.get(open[i]) < dist.get(open[bi])) bi = i;
+        const k = open.splice(bi, 1)[0], d = dist.get(k);
+        for (const [n, l] of adj.get(k) || []) if (!dist.has(n) || d + l < dist.get(n)) { dist.set(n, d + l); open.push(n); }
+      }
+      const H = Math.min(6.5 * layer, total / 6), R = Math.min(70, total * 0.3);
+      const ht = (k) => { const t = Math.min(1, (dist.has(k) ? dist.get(k) : R) / R); return H * t * t * (3 - 2 * t); };
+      for (const r of rs) r.ys = r.pts.map((p) => ht(nk(p)));
+    }
+    for (const r of roads) if (r.l && !r.ys) r.l = 0;
+  }
   const segGrid = new Grid(30);
   for (const r of roads) for (let i = 0; i < r.pts.length - 1; i++) {
     const [ax, az] = r.pts[i], [bx, bz] = r.pts[i + 1];
-    segGrid.add({ ax, az, bx, bz, r }, Math.min(ax, bx) - r.hw, Math.max(ax, bx) + r.hw, Math.min(az, bz) - r.hw, Math.max(az, bz) + r.hw);
+    segGrid.add({ ax, az, bx, bz, r, ya: r.ys ? r.ys[i] : 0, yb: r.ys ? r.ys[i + 1] : 0 }, Math.min(ax, bx) - r.hw, Math.max(ax, bx) + r.hw, Math.min(az, bz) - r.hw, Math.max(az, bz) + r.hw);
   }
   const sq = [];
   function nearestRoad(x, z, maxD = 40, filter = (r) => r.drive) {
@@ -169,12 +201,29 @@ export function buildWorld(scene, data, opts = {}) {
       const dx = s.bx - s.ax, dz = s.bz - s.az, l2 = dx * dx + dz * dz || 1e-9;
       let t = ((x - s.ax) * dx + (z - s.az) * dz) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
       const ex = x - s.ax - dx * t, ez = z - s.az - dz * t, d = Math.sqrt(ex * ex + ez * ez);
-      if (d >= maxD || d - s.r.hw >= score || !filter(s.r)) continue;
+      if (d >= maxD || d - s.r.hw >= score || s.r.l || !filter(s.r)) continue; // flyovers: see deckAt
       bs = s; bd = d; bt = t; score = d - s.r.hw;
     }
     if (!bs) return null;
     const l = Math.hypot(bs.bx - bs.ax, bs.bz - bs.az) || 1;
     return { d: bd, x: bs.ax + (bs.bx - bs.ax) * bt, z: bs.az + (bs.bz - bs.az) * bt, dx: (bs.bx - bs.ax) / l, dz: (bs.bz - bs.az) / l, r: bs.r };
+  }
+
+  // the flyover deck under (x, z): its height, how far you are from its centre line, and its road. With several
+  // (a ramp beside its flyover), the one nearest the height `y` you are at.
+  function deckAt(x, z, y = 0, margin = 0.6) {
+    segGrid.query(x, z, 14, sq);
+    let best = null;
+    for (const s of sq) {
+      if (!s.r.l) continue;
+      const dx = s.bx - s.ax, dz = s.bz - s.az, l2 = dx * dx + dz * dz || 1e-9;
+      let t = ((x - s.ax) * dx + (z - s.az) * dz) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const ex = x - s.ax - dx * t, ez = z - s.az - dz * t, d = Math.sqrt(ex * ex + ez * ez);
+      if (d > s.r.hw + margin) continue;
+      const h = s.ya + (s.yb - s.ya) * t;
+      if (!best || Math.abs(h - y) < Math.abs(best.y - y)) { const l = Math.sqrt(l2); best = { y: h, d, r: s.r, hw: s.r.hw, x: s.ax + dx * t, z: s.az + dz * t, dx: dx / l, dz: dz / l }; }
+    }
+    return best;
   }
 
   // parks (for paths + zones)
@@ -226,6 +275,62 @@ export function buildWorld(scene, data, opts = {}) {
     });
   }
 
+  // a flyover: asphalt on a concrete slab with parapets, on pillars. Low parts of the ramps are solid embankments.
+  const C_SLAB = new THREE.Color('#bdb7ab'), C_PARA = new THREE.Color('#dcd6ca'), C_PIL = '#aaa498';
+  // a quad A B C D (any winding): the normal is turned to face `hint`; uvs are world-space (top) or along the wall
+  function quad3(b, A, Bq, Cq, D, hint, s, col, top = false) {
+    const ux = Bq[0] - A[0], uy = Bq[1] - A[1], uz = Bq[2] - A[2], vx = D[0] - A[0], vy = D[1] - A[1], vz = D[2] - A[2];
+    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const l = Math.hypot(nx, ny, nz) || 1; nx /= l; ny /= l; nz /= l;
+    let P = [A, Bq, Cq, A, Cq, D];
+    if (nx * hint[0] + ny * hint[1] + nz * hint[2] < 0) { nx = -nx; ny = -ny; nz = -nz; P = [A, Cq, Bq, A, D, Cq]; }
+    // three.js front faces are counter-clockwise: flip the order if the cross product says otherwise
+    for (const q of P) b.v(q[0], q[1], q[2], nx, ny, nz, top ? q[0] / s : (q[0] + q[2]) / s, top ? -q[2] / s : q[1] / s, col.r, col.g, col.b);
+  }
+  function deck(r) {
+    const off = offsets(r.pts), hw = r.hw + 0.5, ys = r.ys;
+    let acc = 0;
+    for (let i = 0; i < r.pts.length - 1; i++) {
+      const p = r.pts[i], q = r.pts[i + 1], o = off[i], u = off[i + 1], ya = ys[i], yb = ys[i + 1];
+      const len = Math.hypot(q[0] - p[0], q[1] - p[1]); if (len < 0.05) continue;
+      const dx = (q[0] - p[0]) / len, dz = (q[1] - p[1]) / len;
+      const at = (pt, n, k, y) => [pt[0] + n[0] * k, y, pt[1] + n[1] * k];
+      later(p[0], p[1], () => {
+        const top = 0.07, bA = ya < 3 ? -0.05 : ya - 0.9, bB = yb < 3 ? -0.05 : yb - 0.9;
+        quad3(B('road'), at(p, o, hw, ya + top), at(p, o, -hw, ya + top), at(q, u, -hw, yb + top), at(q, u, hw, yb + top), [0, 1, 0], 10, WHITE, true);
+        const bk = B('concrete');
+        for (const sd of [1, -1]) {
+          const out = [o[0] * sd, 0, o[1] * sd];
+          // slab edge (or embankment wall) and the parapet on top of it
+          quad3(bk, at(p, o, hw * sd, ya + top), at(q, u, hw * sd, yb + top), at(q, u, hw * sd, bB), at(p, o, hw * sd, bA), out, 4, C_SLAB);
+          if (Math.max(ya, yb) > 0.4) {
+            const h1 = 1.0, w = 0.25;
+            quad3(bk, at(p, o, (hw + w) * sd, ya + h1), at(q, u, (hw + w) * sd, yb + h1), at(q, u, (hw + w) * sd, ya < 3 ? bA : ya + top), at(p, o, (hw + w) * sd, ya < 3 ? bA : ya + top), out, 4, C_PARA);
+            quad3(bk, at(p, o, hw * sd, ya + h1), at(q, u, hw * sd, yb + h1), at(q, u, hw * sd, yb + top), at(p, o, hw * sd, ya + top), [-out[0], 0, -out[2]], 4, C_PARA);
+            quad3(bk, at(p, o, hw * sd, ya + h1), at(q, u, hw * sd, yb + h1), at(q, u, (hw + w) * sd, yb + h1), at(p, o, (hw + w) * sd, ya + h1), [0, 1, 0], 4, C_PARA);
+          }
+        }
+        if (ya >= 3 || yb >= 3) quad3(bk, at(p, o, hw, bA), at(p, o, -hw, bA), at(q, u, -hw, bB), at(q, u, hw, bB), [0, -1, 0], 4, C_SLAB);
+      });
+      // pillars every 24 m where the deck is high enough to drive under
+      for (let t = (24 - acc % 24) % 24; t < len; t += 24) {
+        const y = ya + (yb - ya) * t / len; if (y < 3.2) continue;
+        const x = p[0] + dx * t, z = p[1] + dz * t;
+        keep('concrete', x, z, box(1.5, y - 0.9, 1.5, x, (y - 0.9) / 2, z, C_PIL));
+        addCircle(x, z, 0.85, 'pillar', y - 0.9);
+      }
+      // the low part of a ramp is a solid embankment: a wall from the side, ground you can't drive into
+      const n = Math.max(1, Math.ceil(len / 4));
+      for (let k = 0; k < n; k++) {
+        const t0 = k / n, t1 = (k + 1) / n, y0 = ya + (yb - ya) * t0, y1 = ya + (yb - ya) * t1;
+        if (Math.min(y0, y1) < 1 || Math.max(y0, y1) > 3.2) continue;
+        const ax = p[0] + dx * len * t0, az = p[1] + dz * len * t0, bx = p[0] + dx * len * t1, bz = p[1] + dz * len * t1, nx = -dz * hw, nz = dx * hw;
+        addPoly([[ax + nx, az + nz], [bx + nx, bz + nz], [bx - nx, bz - nz], [ax - nx, az - nz]], Math.min(y0, y1), 'embankment');
+      }
+      acc += len;
+    }
+  }
+
   // ---------- ground surfaces ----------
   for (const a of data.areas) {
     const pts = toPts(a.p); if (pts.length < 3) continue;
@@ -240,7 +345,8 @@ export function buildWorld(scene, data, opts = {}) {
   }
   for (const r of roads) {
     const [x0, z0] = r.pts[0]; if (!inB(x0, z0, 150)) continue;
-    if (r.drive) {
+    if (r.l) deck(r);
+    else if (r.drive) {
       ribbon('side', r.pts, r.hw + 2.8, 0.02, 5);
       ribbon('road', r.pts, r.hw, MAJOR.has(r.k) ? 0.06 : 0.05, 10);
       for (const p of [r.pts[0], r.pts[r.pts.length - 1]]) if (junctionR(p)) { disc('road', p[0], p[1], r.hw, MAJOR.has(r.k) ? 0.06 : 0.05, 10); disc('side', p[0], p[1], r.hw + 2.8, 0.02, 5); }
@@ -253,7 +359,7 @@ export function buildWorld(scene, data, opts = {}) {
 
   // ---------- markings, kerbs, zebras ----------
   for (const r of roads) {
-    if (!r.drive || !inB(r.pts[0][0], r.pts[0][1], 100)) continue;
+    if (!r.drive || r.l || !inB(r.pts[0][0], r.pts[0][1], 100)) continue;
     const off = offsets(r.pts);
     const yM = (MAJOR.has(r.k) ? 0.06 : 0.05) + 0.02;
     let acc = 0;
@@ -289,7 +395,7 @@ export function buildWorld(scene, data, opts = {}) {
   for (const [, n] of nodes) {
     if (n.deg < 3 || n.maxW < 8 || !inB(n.x, n.z) || rng() > 0.55) continue;
     for (const r of n.roads) {
-      if (!r.drive || r.w < 6.5) continue;
+      if (!r.drive || r.l || r.w < 6.5) continue;
       const i = r.pts.findIndex((p) => Math.abs(p[0] - n.x) < 0.05 && Math.abs(p[1] - n.z) < 0.05);
       for (const j of [i - 1, i + 1]) {
         const q = r.pts[j]; if (!q) continue;
@@ -348,7 +454,7 @@ export function buildWorld(scene, data, opts = {}) {
       const bb0 = bbox(pts); let over = false;
       segGrid.query((bb0.x1 + bb0.x2) / 2, (bb0.z1 + bb0.z2) / 2, Math.max(bb0.x2 - bb0.x1, bb0.z2 - bb0.z1) / 2 + 2, sq);
       for (const s of sq) {
-        if (!s.r.drive) continue;
+        if (!s.r.drive) continue; // (flyovers too: nothing in OSM really stands in the middle of one)
         for (let t = 0.25; t < 0.8; t += 0.25) {
           const px = s.ax + (s.bx - s.ax) * t, pz = s.az + (s.bz - s.az) * t;
           if (px >= bb0.x1 && px <= bb0.x2 && pz >= bb0.z1 && pz <= bb0.z2 && pip(px, pz, pts)) { over = true; break; }
@@ -719,7 +825,7 @@ export function buildWorld(scene, data, opts = {}) {
     return true;
   };
   for (const r of roads) {
-    if (!r.drive || !inB(r.pts[0][0], r.pts[0][1], 50)) continue;
+    if (!r.drive || r.l || !inB(r.pts[0][0], r.pts[0][1], 50)) continue;
     const major = MAJOR.has(r.k);
     const tSp = major ? 15 : 21, lSp = major ? 34 : 46;
     for (const sd of [-1, 1]) {
@@ -796,7 +902,7 @@ export function buildWorld(scene, data, opts = {}) {
 
   // ---------- potholes & puddles ----------
   const potholes = [];
-  const driveRoads = roads.filter((r) => r.drive && inB(r.pts[0][0], r.pts[0][1]));
+  const driveRoads = roads.filter((r) => r.drive && !r.l && inB(r.pts[0][0], r.pts[0][1]));
   const blob = (key, x, z, rad, y, sx = 1, seg = 11) => {
     const pts = []; for (let i = 0; i < seg; i++) { const a = i / seg * 6.283, rr = rad * (0.75 + rng() * 0.4); pts.push([x + Math.cos(a) * rr * sx, z + Math.sin(a) * rr]); }
     later(x, z, () => { const bt = B(key); for (let i = 0; i < seg; i++) bt.triUp([x, z], pts[i], pts[(i + 1) % seg], y, 1); });
@@ -1064,14 +1170,15 @@ export function buildWorld(scene, data, opts = {}) {
   for (const r of driveRoads) {
     if (r.k === 'living_street') continue;
     for (let i = 0; i < r.pts.length - 1; i++) {
-      const a = gid(r.pts[i]), b = gid(r.pts[i + 1]);
-      const add = (u, v) => {
+      const a = gid(r.pts[i]), b = gid(r.pts[i + 1]), y0 = r.ys ? r.ys[i] : 0, y1 = r.ys ? r.ys[i + 1] : 0;
+      const add = (u, v, ya, yb) => {
         const A = gNodes[u], Bn = gNodes[v], len = Math.hypot(Bn.x - A.x, Bn.z - A.z); if (len < 0.2) return;
-        const e = { a: u, b: v, ax: A.x, az: A.z, bx: Bn.x, bz: Bn.z, len, dx: (Bn.x - A.x) / len, dz: (Bn.z - A.z) / len, w: r.w, oneway: !!r.o, k: r.k, n: r.n };
+        // ya, yb: the deck height at each end (flyovers), 0 on the ground
+        const e = { a: u, b: v, ax: A.x, az: A.z, bx: Bn.x, bz: Bn.z, len, dx: (Bn.x - A.x) / len, dz: (Bn.z - A.z) / len, w: r.w, oneway: !!r.o, k: r.k, n: r.n, l: r.l || 0, ya, yb };
         A.out.push(gEdges.length); gEdges.push(e);
       };
-      if (r.o >= 0) add(a, b);
-      if (r.o <= 0) add(b, a);
+      if (r.o >= 0) add(a, b, y0, y1);
+      if (r.o <= 0) add(b, a, y1, y0);
     }
   }
   const edgeGrid = new Grid(80);
@@ -1128,12 +1235,15 @@ export function buildWorld(scene, data, opts = {}) {
   }
   function surfaceAt(x, z) { return inPark(x, z) && !nearestRoad(x, z, 8, (r) => r.drive && segDistOk(x, z, r)) ? 'grass' : 'road'; }
   function segDistOk() { return true; }
-  let lastZone = ZONES.central, zx = 1e9, zz = 1e9;
-  function zoneAt(x, z) {
-    if (Math.abs(x - zx) < 4 && Math.abs(z - zz) < 4) return lastZone;
-    zx = x; zz = z;
+  let lastZone = ZONES.central, zx = 1e9, zz = 1e9, zUp = false, fallbackZone = null;
+  // y: how high you are (up on a flyover, the flyover names the place, not the road underneath)
+  function zoneAt(x, z, y = 0) {
+    if (Math.abs(x - zx) < 4 && Math.abs(z - zz) < 4 && (y > 1) === zUp) return lastZone;
+    zx = x; zz = z; zUp = y > 1;
     let zn = null;
-    if (stadium && Math.hypot(x - stadium.x, z - stadium.z) < stadium.r + 12) zn = ZONES.stadium;
+    const dk = zUp && deckAt(x, z, y, 1);
+    if (dk && dk.r.n) zn = ZONES[dk.r.n] || (ZONES[dk.r.n] = { name: dk.r.n, kn: KN[dk.r.n] || '' });
+    else if (stadium && Math.hypot(x - stadium.x, z - stadium.z) < stadium.r + 12) zn = ZONES.stadium;
     else if (vidhana && Math.hypot(x - vidhana.x, z - vidhana.z) < 95) zn = ZONES.vidhana;
     else if (ubc && Math.hypot(x - ubc.x, z - ubc.z) < 90) zn = ZONES.ubc;
     else {
@@ -1141,7 +1251,7 @@ export function buildWorld(scene, data, opts = {}) {
       if (nr && Math.hypot(nr.x - x, nr.z - z) < nr.r.hw + 7) zn = ZONES[nr.r.n] || (ZONES[nr.r.n] = { name: nr.r.n, kn: KN[nr.r.n] || '' });
       else if (cubbon && pip(x, z, cubbon.pts)) zn = ZONES.cubbon;
     }
-    return (lastZone = zn || ZONES.central);
+    return (lastZone = zn || (fallbackZone && fallbackZone(x, z)) || ZONES.central);
   }
 
   const offLamp = new THREE.Color('#5a5a5a'), onLamp = new THREE.Color(3.2, 2.6, 1.8);
@@ -1194,7 +1304,7 @@ export function buildWorld(scene, data, opts = {}) {
   return {
     items: (x, z, r, out) => grid.query(x, z, r, out), prime, addStatic, geometryFor, useWorker,
     get streamInfo() { return { live: streamed.filter((c) => c.live).length, total: streamed.length, queued: queue.length, buildMs, finMs }; },
-    collide, solidAt, surfaceAt, zoneAt, update, nearestRoad, insideBuilding, addPoly, addCircle, segGrid, nodes, junctionR, groundAt, inside, ladders, vidhanaTop,
+    collide, solidAt, surfaceAt, zoneAt, setZoneFallback: (fn) => { fallbackZone = fn; }, update, nearestRoad, deckAt, insideBuilding, addPoly, addCircle, segGrid, nodes, junctionR, groundAt, inside, ladders, vidhanaTop,
     potholes, buildings, roads, parks, cubbon, vidhana, stadium, ubc, stations: kiosks, doors, vendors, benches, tracks,
     graph: { nodes: gNodes, edges: gEdges, grid: edgeGrid }, lamps: lampsAll, materials: M, bounds: BOUNDS,
     // inside the playable area, at least m metres from its edge (for placing things: dogs, hustles, fuel stations…)

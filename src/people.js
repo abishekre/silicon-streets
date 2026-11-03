@@ -372,7 +372,7 @@ export function createPeople(scene, world) {
       if (p.idle) { p.x = p.idle.x; p.z = p.idle.z; }
       // a vehicle driven by you at speed knocks people over (they get up, angry)
       if (!p.down) for (const b of focus.blockers) {
-        if (!b.isPlayer || b.speed < 4) continue;
+        if (!b.isPlayer || b.speed < 4 || (b.y || 0) > 2.5) continue;
         if (hyp(p.x - b.x, p.z - b.z) < (b.r || 1.1) + 0.3) { p.down = 5; p.downYaw = Math.atan2(p.x - b.x, p.z - b.z); ev && ev.hitPed && ev.hitPed(p, b.speed); ev && ev.tumble && ev.tumble(p, b.vx || 0, b.vz || 0); alarm(p.x, p.z); }
       }
       if (p.down > 0) {
@@ -414,7 +414,7 @@ export function createPeople(scene, world) {
       let x = p.x, z = p.z;
       for (const b of focus.blockers) {
         const dx = x - b.x, dz = z - b.z, d = hyp(dx, dz);
-        if (d < 3.2 && b.speed > 2) { p.push = Math.min(p.push + dt * 8, 2.5); if (d < 1.6) ev && ev.pedestrian(); }
+        if (d < 3.2 && b.speed > 2 && !((b.y || 0) > 2.5)) { p.push = Math.min(p.push + dt * 8, 2.5); if (d < 1.6) ev && ev.pedestrian(); }
       }
       p.push = damp(p.push, 0, 0.6, dt);
       x += Math.cos(p.yaw) * p.push; z -= Math.sin(p.yaw) * p.push;
