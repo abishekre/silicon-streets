@@ -12,6 +12,15 @@ const DJ = {
     'RJ Anna: "Ee sala cup namde! Okay, okay, I say it every year."',
     'RJ Anna: "Weather update: if you see clouds, it is already raining in Koramangala."',
   ],
+  'Radio Mirchi Bajji 98.3': [
+    'RJ Bajji: "This hour is sponsored by Cafe Coughy Day. A lot can happen over coughy."',
+    'Ad: "Namma Broker! Pre-launch plots near the upcoming metro! Metro upcoming since 2009!"',
+    'Ad: "Subwait: eat fresh, wait longer." *jingle*',
+    'RJ Bajji: "Caller from Whitefield says he left home in 2019. Still on Outer Ring Road. Stay strong, sir."',
+    'Ad: "McDosa\'s: I\'m lovin\' it, swalpa adjust maadi."',
+    'RJ Bajji: "Startup founders, the VC at your café table is listening. Pitch loudly."',
+    'Ad: "BFC, Bengaluru Fried Chicken. Finger-lickin\' traffic jam."',
+  ],
   'Lo-fi Koramangala 101': [
     'Lo-fi DJ: "Beats to code, commute and cry over rent to."',
     'Lo-fi DJ: "Shout-out to everyone in a standup that could have been an email."',
@@ -103,7 +112,7 @@ export function createLife(scene, world, ui, audio) {
 
   // ---------- radio ----------
   let djT = 20;
-  function radioNext() { const name = audio.setStation((['Off', 'Namma 93.FM', 'Lo-fi Koramangala 101'].indexOf(audio.station) + 1)); ui.toast('Radio', name === 'Off' ? 'Radio off.' : `Tuned to <b>${name}</b>.`, 'radio'); djT = 6; }
+  function radioNext() { const name = audio.setStation((['Off', 'Namma 93.FM', 'Lo-fi Koramangala 101', 'Radio Mirchi Bajji 98.3'].indexOf(audio.station) + 1)); ui.toast('Radio', name === 'Off' ? 'Radio off.' : `Tuned to <b>${name}</b>.`, 'radio'); djT = 6; }
 
   let birdT = 4, bellT = 10, hawkT = 15, lastMatch = null, lastSunday = null;
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pv = new THREE.Vector3();
@@ -148,7 +157,10 @@ export function createLife(scene, world, ui, audio) {
     fwMesh.count = n; fwMesh.instanceMatrix.needsUpdate = true; if (fwMesh.instanceColor) fwMesh.instanceColor.needsUpdate = true;
     // ---- radio
     audio.radioTick(s.driving);
-    if (s.driving && audio.station !== 'Off') { djT -= dt; if (djT <= 0) { djT = 35 + Math.random() * 25; const L = DJ[audio.station]; ui.dialogue('Radio: ' + L[Math.floor(Math.random() * L.length)]); } }
+    if (s.driving && audio.station !== 'Off') { djT -= dt; if (djT <= 0) { djT = 35 + Math.random() * 25; const L = DJ[audio.station], news = api.trafficNews && api.trafficNews();
+      ui.dialogue('Radio: ' + (news && Math.random() < 0.5 ? news : L[Math.floor(Math.random() * L.length)])); } }
   }
-  return { update, radioNext, deepavali, dayName: (d) => DAYS[d], get startDay() { return ev.day; } };
+  // trafficNews: set by main.js, a line about whatever is blocking a road right now (src/events.js)
+  const api = { update, radioNext, deepavali, dayName: (d) => DAYS[d], get startDay() { return ev.day; }, trafficNews: null };
+  return api;
 }

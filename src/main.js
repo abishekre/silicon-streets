@@ -275,6 +275,7 @@ async function init() {
   const empire = createEmpire({ scene, world, game, ui, audio, state, player, walker: W, districts: travel.districts });
   // processions that block the road, Rajyotsava flags (src/events.js)
   const events = createEvents({ scene, world, ui, audio, game, state });
+  life.trafficNews = () => { const a = events.active; return a && `Traffic: a ${a.kind === 'rally' ? 'political rally' : a.kind === 'baraat' ? 'wedding baraat' : 'Ganesha procession'} on ${a.road}. Avoid, or join. We won't judge.`; };
   const places = [
     ...travel.districts, ...empire.places(),
     garage.place, ...realism.places(), ...(venues.mall ? [{ name: venues.mall.name, x: venues.mall.x, z: venues.mall.z, icon: 'city' }] : []),

@@ -126,7 +126,7 @@ export function createAudio() {
   // Namma 93.FM: a raga-ish loop (Mayamalavagowla scale) over a tabla-like beat; Lo-fi Koramangala: soft chords
   const RAGA = [0, 1, 4, 5, 7, 8, 11, 12];
   let station = 0, beat = 0, nextBeat = 0;
-  const STATIONS = ['Off', 'Namma 93.FM', 'Lo-fi Koramangala 101'];
+  const STATIONS = ['Off', 'Namma 93.FM', 'Lo-fi Koramangala 101', 'Radio Mirchi Bajji 98.3'];
   function setStation(i) { station = i % STATIONS.length; nextBeat = 0; return STATIONS[station]; }
   function radioTick(on) { via('radio', () => radioNow(on)); }
   function radioNow(on) {
@@ -142,6 +142,13 @@ export function createAudio() {
         if (step % 2 === 0) { const n = RAGA[(beat * 7 + Math.floor(beat / 16) * 3) % RAGA.length]; tone([base * Math.pow(2, n / 12)], 0.22, 'triangle', 0.045, 0, t); }
         if (step === 0) tone([110], 1.8, 'sawtooth', 0.015, 0, t);                // drone
         nextBeat += 0.16;
+      } else if (station === 3) {
+        // Mirchi Bajji: bouncy filmi-pop jingle, major arpeggio over a dhol-ish kick
+        const step = beat % 8, root = [0, 5, 7, 5][Math.floor(beat / 8) % 4];
+        if (step % 2 === 0) noiseBurst(0.09, 160, 0.2, t);
+        if (step % 4 === 3) noiseBurst(0.04, 3000, 0.06, t, 'highpass');
+        tone([262 * Math.pow(2, (root + [0, 4, 7, 12, 7, 4, 7, 12][step]) / 12)], 0.12, 'square', 0.02, 0, t);
+        nextBeat += 0.14;
       } else {
         const bar = Math.floor(beat / 8) % 4, chords = [[0, 4, 7, 11], [9, 12, 16, 19], [5, 9, 12, 16], [7, 11, 14, 17]];
         if (beat % 8 === 0) tone(chords[bar].map((n) => 196 * Math.pow(2, n / 12)), 1.9, 'sine', 0.02, 0, t);
