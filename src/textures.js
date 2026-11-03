@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { makeRng } from './util.js';
+import { drawIcon } from './icons.js';
 
 const rng = makeRng(42);
 
@@ -141,7 +142,7 @@ export function facadeB() {
 }
 
 const POI_STYLE = {
-  cafe: ['#3e2723', '#ffcc80', 'ಕಾಫಿ ☕'], restaurant: ['#b71c1c', '#fff59d', 'ಹೋಟೆಲ್ · ಊಟ'], fast_food: ['#e65100', '#ffffff', 'ಫಾಸ್ಟ್ ಫುಡ್'],
+  cafe: ['#3e2723', '#ffcc80', 'ಕಾಫಿ · COFFEE'], restaurant: ['#b71c1c', '#fff59d', 'ಹೋಟೆಲ್ · ಊಟ'], fast_food: ['#e65100', '#ffffff', 'ಫಾಸ್ಟ್ ಫುಡ್'],
   pub: ['#1b1b1b', '#ffb300', 'ಪಬ್ · ಬಿಯರ್'], bar: ['#311b92', '#e1bee7', 'ಬಾರ್'], ice_cream: ['#ad1457', '#ffffff', 'ಐಸ್ ಕ್ರೀಂ'],
 };
 export function poiSignAtlas(pois) {
@@ -300,10 +301,11 @@ export function textTexture(lines, { w = 512, h = 128, bg = '#000', fg = '#fff',
   return tex(c, { repeat: false });
 }
 
-export function emojiTexture(emoji) {
+// a line icon on a dark disc with a gold ring, for floating 3D markers (collectibles)
+export function iconTexture(name, { fg = '#ffd23f', bg = '#15171c' } = {}) {
   const [c, x] = cnv(128, 128);
-  x.font = '96px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
-  x.textAlign = 'center'; x.textBaseline = 'middle';
-  x.fillText(emoji, 64, 70);
+  x.fillStyle = bg; x.beginPath(); x.arc(64, 64, 56, 0, 7); x.fill();
+  x.strokeStyle = fg; x.lineWidth = 6; x.stroke();
+  drawIcon(x, name, 64, 64, 68, fg, 2.2);
   return tex(c, { repeat: false });
 }

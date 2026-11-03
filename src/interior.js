@@ -34,33 +34,33 @@ const plain = (c) => canvasTex(64, 64, (x) => { x.fillStyle = c; x.fillRect(0, 0
 
 // Each venue gets a cuisine from its name, which decides its menu and base look.
 export const CUISINES = {
-  tea: { look: 'darshini', kn: 'ಟೀ ಅಂಗಡಿ', tag: 'Chai, Bun & Gossip', icon: '🍵', items: [
+  tea: { look: 'darshini', kn: 'ಟೀ ಅಂಗಡಿ', tag: 'Chai, Bun & Gossip', icon: 'coffee', items: [
     ['Masala Chai', 20, 10, 'Strong, milky, cardamom and ginger.'], ['Irani Chai', 30, 12, 'Thick, sweet, served with a tiny saucer.'],
     ['Ginger Lemon Tea', 25, 10, 'For the throat after a day in traffic.'], ['Bun Maska', 30, 15, 'Soft bun, absurd amount of butter.'],
     ['Osmania Biscuit', 10, 5, 'Dip it. Do not let it sink.'], ['Samosa', 20, 15, 'Hot, crisp, with green chutney.']] },
-  sandwich: { look: 'cafe', kn: 'ಸ್ಯಾಂಡ್‌ವಿಚ್', tag: 'Pressed & Toasted', icon: '🥪', items: [
+  sandwich: { look: 'cafe', kn: 'ಸ್ಯಾಂಡ್‌ವಿಚ್', tag: 'Pressed & Toasted', icon: 'food', items: [
     ['Paneer Tikka Panini', 240, 30, 'Smoky paneer, mint mayo, pressed crisp.'], ['Chicken Pesto Panini', 290, 32, 'Basil pesto, sun-dried tomato, mozzarella.'],
     ['Bombay Masala Toast', 120, 22, 'Potato masala, beetroot, cheese, green chutney.'], ['Grilled Veg Sandwich', 180, 25, 'Peppers, zucchini, hummus.'],
     ['Iced Lemon Tea', 140, 8, 'Cold, sweet, very needed.']] },
-  pizza: { look: 'cafe', kn: 'ಪಿಜ್ಜಾ', tag: 'Wood-fired since Tuesday', icon: '🍕', items: [
+  pizza: { look: 'cafe', kn: 'ಪಿಜ್ಜಾ', tag: 'Wood-fired since Tuesday', icon: 'food', items: [
     ['Margherita', 299, 35, 'Tomato, basil, mozzarella. Classic.'], ['Paneer Makhani Pizza', 399, 40, 'Bengaluru fusion at its finest.'],
     ['Garlic Bread', 149, 15, 'Buttery, garlicky, gone in seconds.'], ['Cold Coffee', 129, 10, 'Thick, with a scoop of ice cream.']] },
-  burger: { look: 'fastfood', kn: 'ಬರ್ಗರ್', tag: 'Fast, Hot, Messy', icon: '🍔', items: [
+  burger: { look: 'fastfood', kn: 'ಬರ್ಗರ್', tag: 'Fast, Hot, Messy', icon: 'food', items: [
     ['Aloo Tikki Burger', 99, 25, 'The Indian classic.'], ['Crispy Chicken Burger', 179, 30, 'Crunchy, saucy, huge.'],
     ['Peri Peri Fries', 129, 15, 'Spicy dust on everything.'], ['Thick Shake', 149, 18, 'Spoon required.']] },
-  biryani: { look: 'restaurant', kn: 'ಬಿರಿಯಾನಿ', tag: 'Dum Biryani · Kebabs', icon: '🍛', items: [
+  biryani: { look: 'restaurant', kn: 'ಬಿರಿಯಾನಿ', tag: 'Dum Biryani · Kebabs', icon: 'food', items: [
     ['Chicken Biryani', 280, 55, 'Fragrant rice, tender chicken, the egg on top.'], ['Mutton Biryani', 380, 60, 'Worth every rupee.'],
     ['Veg Biryani', 220, 45, 'Yes, vegetarians, it counts.'], ['Chicken Kebab', 260, 35, 'Charred, juicy, with onion rings.'], ['Raita', 40, 5, 'Cools everything down.']] },
-  chinese: { look: 'restaurant', kn: 'ಚೈನೀಸ್', tag: 'Indo-Chinese', icon: '🥡', items: [
+  chinese: { look: 'restaurant', kn: 'ಚೈನೀಸ್', tag: 'Indo-Chinese', icon: 'food', items: [
     ['Gobi Manchurian', 180, 25, 'The most Indian Chinese dish ever.'], ['Hakka Noodles', 200, 30, 'Wok-tossed, smoky.'],
     ['Chilli Chicken', 260, 32, 'Dry, spicy, with spring onions.'], ['Veg Momos', 150, 20, 'Steamed, with fiery red chutney.']] },
-  northindian: { look: 'restaurant', kn: 'ಉತ್ತರ ಭಾರತೀಯ', tag: 'Tandoor & Curries', icon: '🫓', items: [
+  northindian: { look: 'restaurant', kn: 'ಉತ್ತರ ಭಾರತೀಯ', tag: 'Tandoor & Curries', icon: 'food', items: [
     ['Butter Chicken', 320, 45, 'Rich, creamy, unapologetic.'], ['Paneer Butter Masala', 280, 40, 'The vegetarian answer.'],
     ['Dal Makhani', 240, 35, 'Slow-cooked overnight.'], ['Butter Naan', 60, 15, 'Tear, dip, repeat.'], ['Sweet Lassi', 90, 15, 'Thick enough to stand a spoon in.']] },
-  icecream: { look: 'bakery', kn: 'ಐಸ್ ಕ್ರೀಂ', tag: 'Sundaes & Scoops', icon: '🍨', items: [
+  icecream: { look: 'bakery', kn: 'ಐಸ್ ಕ್ರೀಂ', tag: 'Sundaes & Scoops', icon: 'food', items: [
     ['Death by Chocolate', 210, 20, 'A Bengaluru legend in a glass.'], ['Hot Chocolate Fudge', 170, 18, 'Hot fudge on cold ice cream.'],
     ['Malai Kulfi', 80, 10, 'Dense, nutty, on a stick.'], ['Belgian Waffle', 190, 22, 'Crisp edges, soft middle.']] },
-  fine: { look: 'fine', kn: 'ಫೈನ್ ಡೈನಿಂಗ್', tag: 'Fine Dining · Reservations Only', icon: '🥂', items: [
+  fine: { look: 'fine', kn: 'ಫೈನ್ ಡೈನಿಂಗ್', tag: 'Fine Dining · Reservations Only', icon: 'glass', items: [
     ["Chef's Tasting Menu (7 courses)", 4500, 80, 'Seven tiny plates, each explained by a waiter in a bow tie.'], ['Coorg Pandi Curry', 1250, 45, 'Kodava pork curry with kachampuli, plated like art.'],
     ['Mangalorean Ghee Roast Prawns', 1450, 45, 'Fiery, buttery, with neer dosa on the side.'], ['Filter Coffee Tiramisu', 720, 22, 'Chikmagalur coffee meets Italy.'],
     ['Tender Coconut Panna Cotta', 650, 20, 'Wobbles beautifully.'], ['Glass of Nashik Sauvignon Blanc', 950, 5, 'The sommelier nods approvingly.']] },

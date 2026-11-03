@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import { damp } from './util.js';
 
 export const WEATHERS = {
-  clear: { label: 'Clear', icon: '☀️', cloud: 0.18, rain: 0 },
-  cloudy: { label: 'Cloudy', icon: '⛅', cloud: 0.7, rain: 0 },
-  rain: { label: 'Rain', icon: '🌧️', cloud: 0.92, rain: 0.6 },
-  storm: { label: 'Storm', icon: '⛈️', cloud: 1, rain: 1 },
+  clear: { label: 'Clear', icon: 'sun', cloud: 0.18, rain: 0 },
+  cloudy: { label: 'Cloudy', icon: 'cloud', cloud: 0.7, rain: 0 },
+  rain: { label: 'Rain', icon: 'rain', cloud: 0.92, rain: 0.6 },
+  storm: { label: 'Storm', icon: 'storm', cloud: 1, rain: 1 },
 };
 export const WEATHER_ORDER = ['clear', 'cloudy', 'rain', 'storm'];
 

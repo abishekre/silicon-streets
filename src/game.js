@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { createPassengerMesh, createBeam } from './people.js';
-import { emojiTexture, glow } from './textures.js';
+import { iconTexture, glow } from './textures.js';
 
 const PICKUP_LINES = [
   'Anna, {d} hogthira? Meter haaki please.',
@@ -19,20 +19,20 @@ const DROP_LINES = ['Thank you anna, keep the change!', 'Super ride guru. 5 star
 // One job loop, three gig apps (parody brands). Each vehicle gets its own app.
 const GIGS = {
   auto: {
-    apps: ['Namma Auto'], icon: '🛺', who: 'Passenger', word: 'ride', pickLabel: 'pick up passenger', dropLabel: 'drop off',
+    apps: ['Namma Auto'], icon: 'auto', who: 'Passenger', word: 'ride', pickLabel: 'pick up passenger', dropLabel: 'drop off',
     fare: (m) => 30 + m * 0.06, pickup: PICKUP_LINES, ride: RIDE_LINES, crash: CRASH_LINES, drop: DROP_LINES, bad: 'Next time Namma Metro, anna.',
   },
   scooter: {
-    apps: ['Swiggly', 'Zoomato'], icon: '🛵', who: 'Customer', word: 'order', pickLabel: 'collect the order', dropLabel: 'hand over the order', delivery: true,
+    apps: ['Swiggly', 'Zoomato'], icon: 'scooter', who: 'Customer', word: 'order', pickLabel: 'collect the order', dropLabel: 'hand over the order', delivery: true,
     fare: (m) => 35 + m * 0.035,
     pickup: ['Order for {app}? Packing done, saar. Hot hot!', 'Extra chutney inside, don\'t tilt the bag!', 'Biryani parcel, handle with love.'],
-    ride: ['📱 Customer: "Where are you? I can see you on the map going the wrong way."', '📱 Customer: "Please don\'t ring the bell, baby is sleeping."', '📱 Customer: "Ask security for Block C, not Block B!"', '📱 Customer: "Add one Coke? …Never mind."'],
-    crash: ['📱 Customer: "Is my biryani okay??"', '📱 Customer: "Why is the tracker shaking?"', 'The dal is now everywhere. Oops.'],
+    ride: ['Customer (on the phone): "Where are you? I can see you on the map going the wrong way."', 'Customer (on the phone): "Please don\'t ring the bell, baby is sleeping."', 'Customer (on the phone): "Ask security for Block C, not Block B!"', 'Customer (on the phone): "Add one Coke? …Never mind."'],
+    crash: ['Customer (on the phone): "Is my biryani okay??"', 'Customer (on the phone): "Why is the tracker shaking?"', 'The dal is now everywhere. Oops.'],
     drop: ['Customer: "Thank you! Leave it… oh you\'re here. Okay."', 'Customer: "Super fast! 5 stars."', 'Customer: "Here, keep ₹20 for the rain."'],
     bad: 'Customer: "The biryani is now a smoothie. 1 star."',
   },
   car: {
-    apps: ['Oober'], icon: '🚗', who: 'Rider', word: 'trip', pickLabel: 'pick up rider', dropLabel: 'end trip', surge: true,
+    apps: ['Oober'], icon: 'car', who: 'Rider', word: 'trip', pickLabel: 'pick up rider', dropLabel: 'end trip', surge: true,
     fare: (m) => 60 + m * 0.1,
     pickup: ['Hi, {d}? Please take the fastest route, I have a 2 pm standup.', 'Are you Oober for Priya? Cool. {d}, please.', 'Bro, {d}. And can you increase the AC?'],
     ride: ['Rider: "Bro, which startup do you work for?"', 'Rider: "Can you avoid Outer Ring Road? Actually, everything is ORR now."', 'Rider: "My cab last week had a karaoke system."', 'Rider: "Is this the Hebbal flyover? No? Okay."'],
@@ -86,20 +86,20 @@ export function createGame(scene, world, people, ui, audio, hooks) {
   const COL = [];
   const churchDoor = world.doors.find((d) => d.road === 'Church Street');
   const cm = roadMid('Church Street'), bm = roadMid('Brigade Road');
-  if (churchDoor || cm) COL.push({ ...(churchDoor || curb(cm.x, cm.z)), e: '☕', t: 'Filter Kaapi > Cold Brew', b: 'Every table on Church Street is pitching a startup. Two of them are pitching the same one.' });
-  if (bm) COL.push({ ...curb(bm.x, bm.z), e: '💻', t: 'Overheard on Brigade Road', b: '"We\'re pivoting to AI… again."' });
-  if (people.cows[0]) COL.push({ x: people.cows[0].x, z: people.cows[0].z + 2.5, e: '🐄', t: 'Traffic Police (Unofficial)', b: 'The cow has right of way. Always has, always will.' });
+  if (churchDoor || cm) COL.push({ ...(churchDoor || curb(cm.x, cm.z)), e: 'coffee', t: 'Filter Kaapi > Cold Brew', b: 'Every table on Church Street is pitching a startup. Two of them are pitching the same one.' });
+  if (bm) COL.push({ ...curb(bm.x, bm.z), e: 'laptop', t: 'Overheard on Brigade Road', b: '"We\'re pivoting to AI… again."' });
+  if (people.cows[0]) COL.push({ x: people.cows[0].x, z: people.cows[0].z + 2.5, e: 'cow', t: 'Traffic Police (Unofficial)', b: 'The cow has right of way. Always has, always will.' });
   const bandstand = world.buildings.find((b) => /band stand/i.test(b.name || ''));
-  if (bandstand) COL.push({ x: bandstand.cx + 8, z: bandstand.cz + 8, e: '🎺', t: 'Cubbon Park Bandstand', b: 'Sunday mornings: 400 joggers, 1 dog influencer, 0 parking spots.' });
-  if (world.stadium) COL.push({ x: world.stadium.x, z: world.stadium.z + world.stadium.r + 8, e: '🏏', t: 'Ee Sala Cup Namde', b: 'Chinnaswamy says this is the year. (It says that every year.)' });
+  if (bandstand) COL.push({ x: bandstand.cx + 8, z: bandstand.cz + 8, e: 'music', t: 'Cubbon Park Bandstand', b: 'Sunday mornings: 400 joggers, 1 dog influencer, 0 parking spots.' });
+  if (world.stadium) COL.push({ x: world.stadium.x, z: world.stadium.z + world.stadium.r + 8, e: 'cricket', t: 'Ee Sala Cup Namde', b: 'Chinnaswamy says this is the year. (It says that every year.)' });
   const mg = world.stations.find((s) => s.elevated);
-  if (mg) COL.push({ x: mg.ex + 2, z: mg.ez + 2, e: '🚇', t: 'Namma Metro', b: 'Beat the traffic. Take the purple line. Stand on the right.' });
-  if (world.vidhana) COL.push({ x: world.vidhana.fx, z: world.vidhana.fz, e: '🏛️', t: "Government Work is God's Work", b: 'It is literally carved on the building: ಸರ್ಕಾರದ ಕೆಲಸ ದೇವರ ಕೆಲಸ. Look up!' });
-  if (world.ubc) COL.push({ ...curb(world.ubc.x, world.ubc.z), e: '🏙️', t: 'UB City', b: 'Where Bengaluru goes to look at things it cannot afford.' });
+  if (mg) COL.push({ x: mg.ex + 2, z: mg.ez + 2, e: 'metro', t: 'Namma Metro', b: 'Beat the traffic. Take the purple line. Stand on the right.' });
+  if (world.vidhana) COL.push({ x: world.vidhana.fx, z: world.vidhana.fz, e: 'landmark', t: "Government Work is God's Work", b: 'It is literally carved on the building: ಸರ್ಕಾರದ ಕೆಲಸ ದೇವರ ಕೆಲಸ. Look up!' });
+  if (world.ubc) COL.push({ ...curb(world.ubc.x, world.ubc.z), e: 'city', t: 'UB City', b: 'Where Bengaluru goes to look at things it cannot afford.' });
 
   const glowTex = glow();
   const items = COL.map((c) => {
-    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: emojiTexture(c.e), depthWrite: false }));
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: iconTexture(c.e), depthWrite: false }));
     s.scale.set(2.2, 2.2, 1); s.position.set(c.x, 2.4, c.z);
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: '#ffd23f', transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false }));
     halo.scale.set(2, 2, 1); s.add(halo); scene.add(s);
@@ -128,7 +128,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
     const d = dist(pos, ride.from);
     const est = Math.round(G.fare(600) * ride.surge * (0.8 + Math.random() * 0.5));
     ui.offer({ app: ride.app, icon: G.icon, title: G.delivery ? `Pick up from ${ride.from.name}` : `Pickup at ${ride.from.name}`,
-      sub: `${(d / 1000).toFixed(1)} km away · est. ₹${est}${ride.surge > 1 ? ' · ⚡ surge 1.6×' : ''}`, secs: 20, onAccept: acceptOffer, onDecline: declineOffer });
+      sub: `${(d / 1000).toFixed(1)} km away · est. ₹${est}${ride.surge > 1 ? ' · surge 1.6×' : ''}`, secs: 20, onAccept: acceptOffer, onDecline: declineOffer });
     audio.chime();
   }
   function acceptOffer() {
@@ -137,12 +137,12 @@ export function createGame(scene, world, people, ui, audio, hooks) {
     ride.state = 'waiting'; ui.offer(null);
     pmesh.position.set(ride.from.x, 0, ride.from.z); pmesh.visible = true;
     pickBeam.position.set(ride.from.x, 0, ride.from.z); pickBeam.visible = true;
-    ui.toast(`✅ ${ride.app}: ${G.word} accepted`, `${G.delivery ? 'Collect the order at' : 'Pickup at'} <b>${ride.from.name}</b>. Follow the GPS.`, 'ride');
+    ui.toast(`${ride.app}: ${G.word} accepted`, `${G.delivery ? 'Collect the order at' : 'Pickup at'} <b>${ride.from.name}</b>. Follow the GPS.`, 'check', 'ride');
   }
   function declineOffer(expired = false) {
     if (ride.state !== 'offer') return;
     ui.offer(null); ride.state = 'cooldown'; ride.timer = 10 + (100 - wallet.respect) * 0.3;
-    if (expired) ui.toast(`⌛ ${ride.app} request expired`, 'Someone else took it.');
+    if (expired) ui.toast(`${ride.app} request expired`, 'Someone else took it.', 'hourglass');
   }
   function cancel() {
     ride.state = 'cooldown'; ride.timer = 6;
@@ -150,9 +150,9 @@ export function createGame(scene, world, people, ui, audio, hooks) {
   }
 
   function buy(name, price, energy, desc) {
-    if (wallet.money < price) { ui.toast('💸 Not enough money', `You need ₹${price}. Drive the auto to earn some.`); return false; }
+    if (wallet.money < price) { ui.toast('Not enough money', `You need ₹${price}. Drive the auto to earn some.`, 'cash'); return false; }
     wallet.money -= price; wallet.energy = Math.min(100, wallet.energy + energy);
-    ui.toast(`😋 ${name} · ₹${price}`, desc); audio.cash();
+    ui.toast(`${name} · ₹${price}`, desc, 'food'); audio.cash();
     return true;
   }
   function menuFor(title, kn, list, foot) {
@@ -194,7 +194,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
     ui.menu({
       title: `${from.name} Metro`, kn: 'ನಮ್ಮ ಮೆಟ್ರೋ', foot: 'Purple Line · tokens ₹20',
       items: dests.map((s) => ({ name: `Ride to ${s.name}`, price: 20, desc: 'Stand on the right. Mind the gap.', onPick: () => {
-        if (wallet.money < 20) { ui.toast('💸 Not enough money'); return; }
+        if (wallet.money < 20) { ui.toast('Not enough money', '', 'cash'); return; }
         wallet.money -= 20; hooks.travel(s, from);
       } })),
     });
@@ -214,7 +214,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
     dropBeam.position.set(ride.to.x, 0, ride.to.z); dropBeam.visible = true;
     const line = fmt(pick(G.pickup), ride.to.name).replace('{app}', ride.app);
     ui.dialogue(G.delivery ? `Restaurant: "${line}"` : `${G.who}: "${line}"`);
-    if (G.delivery) ui.toast(`🕒 Deliver in ${Math.ceil(ride.deadline / 60)} min`, `To <b>${ride.to.name}</b>. Potholes spill food.`);
+    if (G.delivery) ui.toast(`Deliver in ${Math.ceil(ride.deadline / 60)} min`, `To <b>${ride.to.name}</b>. Potholes spill food.`, 'clock');
     audio.chime();
   }
   function dropoff(ctx) {
@@ -226,7 +226,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
     const tip = ride.rating >= 4.5 && early && wallet.respect > 40 ? 10 + Math.round(Math.random() * 3) * 5 : 0;
     const total = Math.round(ride.fare) + tip;
     ride.earned += total; ride.rides++; wallet.money += total;
-    ui.toast(`💸 ${ride.app} paid ₹${total}`, `${ride.surge > 1 ? 'Surge 1.6× · ' : ''}Fare ₹${Math.round(ride.fare)}${tip ? ` + ₹${tip} tip` : ''}${G.delivery && !early ? ' · late!' : ''} · ${'★'.repeat(Math.round(ride.rating))}${'☆'.repeat(5 - Math.round(ride.rating))}`, 'cash');
+    ui.toast(`${ride.app} paid ₹${total}`, `${ride.surge > 1 ? 'Surge 1.6× · ' : ''}Fare ₹${Math.round(ride.fare)}${tip ? ` + ₹${tip} tip` : ''}${G.delivery && !early ? ' · late!' : ''} · rated ${Math.round(ride.rating)}/5`, 'cash', 'cash');
     const say = ride.rating >= 4 ? pick(G.drop) : G.bad;
     ui.dialogue(say.includes(':') ? say : `${G.who}: "${say}"`);
     audio.cash();
@@ -242,7 +242,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
   function onPothole() {
     if (ride.state !== 'riding') return; const G = GIGS[ride.kind];
     ride.rating = Math.max(1, ride.rating - (G.delivery ? 0.3 : 0.15));
-    if (Math.random() < 0.5) ui.dialogue(G.delivery ? 'The sambar just leaked into the bag. 😬' : `${G.who}: "Ayyo, pothole! My back."`);
+    if (Math.random() < 0.5) ui.dialogue(G.delivery ? 'The sambar just leaked into the bag.' : `${G.who}: "Ayyo, pothole! My back."`);
   }
 
   let lowWarned = false;
@@ -261,17 +261,17 @@ export function createGame(scene, world, people, ui, audio, hooks) {
     }
     // energy drains with time, faster when running
     wallet.energy = Math.max(0, wallet.energy - gameHoursDelta * 4 - (ctx.running ? dt * 0.15 : 0));
-    if (wallet.energy < 20 && !lowWarned) { lowWarned = true; ui.toast('🥱 Low energy', 'Grab a filter kaapi at a darshini or a tender coconut from a cart.'); }
+    if (wallet.energy < 20 && !lowWarned) { lowWarned = true; ui.toast('Low energy', 'Grab a filter kaapi at a darshini or a tender coconut from a cart.', 'battery'); }
     if (wallet.energy > 30) lowWarned = false;
     const a = nearestAction(ctx);
-    ui.prompt(a ? `Press <kbd>E</kbd> to ${a.label}` : ctx.extraPrompt || null);
+    ui.prompt(a ? `Press ${ui.kbd('interact')} to ${a.label}` : ctx.extraPrompt || null);
     const focus = ctx.mode === 'drive' ? ctx.player.pos : ctx.walker.pos;
     if (ctx.mode !== 'interior') for (const it of items) {
       if (it.got) continue;
       it.s.position.y = 2.4 + Math.sin(t * 2 + it.x) * 0.25;
       if (dist(focus, it) < 4.5) {
         it.got = true; it.s.visible = false;
-        ui.card(it.e, it.t, it.b, `Peak Bengaluru ${items.filter((i) => i.got).length}/${items.length}`, ctx.mode === 'drive');
+        ui.card(it.e, it.t, it.b, 'Peak Bengaluru moment', ctx.mode === 'drive');
         audio.chime();
       }
     }
@@ -289,5 +289,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
   return {
     update, interact, onCrash, onPothole, markers, ride, wallet, cancel, spots: SPOTS, acceptOffer, declineOffer: () => declineOffer(false),
     get collected() { return items.filter((i) => i.got).length; }, totalCollectibles: items.length,
+    // save / load: which collectibles you already found
+    get found() { return items.map((i) => (i.got ? 1 : 0)); }, restore(f) { items.forEach((i, k) => { i.got = !!(f && f[k]); i.s.visible = !i.got; }); },
   };
 }
