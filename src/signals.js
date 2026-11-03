@@ -123,9 +123,9 @@ export function createSignals(scene, world) {
         const hd = Math.atan2(player.vel.x, player.vel.y);
         if (!s.signal.canGo(hd)) {
           const copNear = cops.some((k) => Math.hypot(k.x - s.x, k.z - s.z) < 5);
-          if (copNear) { wallet.fine ? wallet.fine(100, 'Fine: jumped a red') : (wallet.money = Math.max(0, wallet.money - 100)); ui.toast('Fine: ₹100', 'Traffic police: "Signal jump, saar! Next time licence seize."'); }
+          if (copNear) { wallet.fine ? wallet.fine(50, 'Fine: jumped a red') : (wallet.money = Math.max(0, wallet.money - 50)); ui.toast('Fine: ₹50', 'Traffic police: "Signal jump, saar! Next time licence seize."'); }
           // no cop, but maybe a camera: the e-challan arrives later
-          else if (wallet.fine && Math.random() < 0.4) { wallet.fine(500, 'e-challan: jumped a red'); ui.toast('e-challan: red light', 'A traffic camera got your number plate. ₹500.'); }
+          else if (wallet.fine && Math.random() < 0.4) { wallet.fine(50, 'e-challan: jumped a red'); ui.toast('e-challan: red light', 'A traffic camera got your number plate. ₹50, payable whenever the server is back up.'); }
           else ui.toast('You jumped a red', 'Nobody saw. This time.');
         }
       }

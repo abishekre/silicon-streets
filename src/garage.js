@@ -14,7 +14,7 @@ const UPG = {
 };
 const PAINTS = { scooter: ['#e53935', '#1e88e5', '#fdd835', '#43a047', '#212121', '#fafafa'], car: ['#c62828', '#263238', '#f5f5f5', '#1565c0', '#8d6e63', '#ff7043'] };
 const LABEL = { auto: 'Auto', scooter: 'Scooter', car: 'Car' };
-export const RELEASE_FEE = 500, FIRST_FEE = 200, LOAN_MAX = 1500;
+export const RELEASE_FEE = 150, FIRST_FEE = 50, LOAN_MAX = 1500;
 
 export function createGarage({ scene, world, tow, player, game, ui, audio, navTo }) {
   const yard = tow.yard, W = game.wallet;

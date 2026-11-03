@@ -141,9 +141,9 @@ export function createRealism({ world, ui, audio, player, game, hooks }) {
         if (c.cd > 0 || Math.hypot(p.x - c.x, p.z - c.z) > 14) continue;
         const kmh = Math.abs(player.speed) * 3.6;
         if (Math.abs(player.speed) > LIMIT) {
-          c.cd = 30; const amt = kmh > 70 ? 1000 : 500;
+          c.cd = 30; const amt = kmh > 70 ? 100 : 50; // satire, not a tax: small enough to laugh at
           W.fine(amt, `e-challan: ${Math.round(kmh)} km/h on ${c.road}`); s.flash && s.flash();
-          (s.notify || ui.toast)('Speed camera', `Flash! ${Math.round(kmh)} km/h in a 50 zone on ${c.road}. e-challan ₹${amt}.`, 'camera');
+          (s.notify || ui.toast)('Speed camera', `Flash! ${Math.round(kmh)} km/h in a 50 zone on ${c.road}. e-challan ₹${amt}. It will reach you by post in 2031.`, 'camera');
         }
       }
     }

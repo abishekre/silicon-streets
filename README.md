@@ -41,6 +41,14 @@ Notes for a public launch:
 - **Map data** is © OpenStreetMap contributors (ODbL). Keep the attribution visible (it's on the start screen).
 - **Business names**: signboards show real café/restaurant names from OSM. That's fine for a prototype; for a public or commercial release, consider parody names or partnerships.
 
+## Getting rich
+
+Gigs pay the chai. The real money is satire:
+
+- **Namma Broker:** red FOR SALE boards in every neighbourhood, from a ₹8,000 "pre-launch plot near the upcoming metro" to a ₹15 lakh penthouse with a view of the jam. Property pays rent every 6 in-game hours. Prices swing with the news ("Metro line announced!", "Flyover postponed again"), so you can flip too.
+- **Startup pitches:** sit down in any café, darshini or pub. A VC is always at the next table. Pick an idea ("Uber for idli", "NFTs of Silk Board") and raise a round every few hours, from Friends & Family up to the IPO.
+- Side hustles (gold coins on the street) and on-foot gigs fill the gaps. Fines are small: the e-challan arrives by post in 2031.
+
 ## Refresh or extend the map
 
 The map covers central Bengaluru, Indiranagar, Domlur, Koramangala, Madiwala, Banaswadi, Kasturi Nagar,

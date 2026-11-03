@@ -215,6 +215,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
 
   // nearest interactable for the current situation
   const extra = [], extraDrive = []; // actions other modules add: on foot (garage counter, dogs), driving (fuel pumps)
+  let seatExtra = null;
   function nearestAction(ctx) {
     if (ctx.mode === 'drive') {
       const p = ctx.player.pos;
@@ -232,7 +233,11 @@ export function createGame(scene, world, people, ui, audio, hooks) {
       if (!best) return null;
       const it = best.it;
       if (it.type === 'counter') return { label: 'order', run: () => { const m = ctx.menu; menuFor(ctx.place.name, m.kn, m.items, 'Tap an item to order'); } };
-      if (it.type === 'seat') return { label: it.label.toLowerCase(), run: () => hooks.rest(0.5, 10, 'You sat for a while and people-watched. Peak Bengaluru.') };
+      if (it.type === 'seat') {
+        const sit = () => hooks.rest(0.5, 10, 'You sat for a while and people-watched. Peak Bengaluru.');
+        // other modules can offer more at a seat (src/empire.js: the VC at the next table)
+        return (seatExtra && seatExtra(ctx, sit)) || { label: it.label.toLowerCase(), run: sit };
+      }
       if (it.type === 'door') return { label: 'step outside', run: () => hooks.exitInterior() };
     }
     if (ctx.mode === 'walk') {
@@ -416,7 +421,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
   }
 
   return {
-    addAction: (fn) => extra.push(fn), addDriveAction: (fn) => extraDrive.push(fn), menuFor,
+    addAction: (fn) => extra.push(fn), addDriveAction: (fn) => extraDrive.push(fn), setSeatAction: (fn) => { seatExtra = fn; }, menuFor,
     walkGigs: Object.entries(WALK).map(([id, G]) => ({ id, app: G.app, icon: G.icon, word: G.word })),
     // ask for an on-foot job soon (after "leave it at the garage")
     walkGigNow: () => { if (ride.state === 'cooldown') ride.timer = Math.min(ride.timer, 1.5); },
