@@ -71,19 +71,22 @@ async function init() {
   const snapRes = (v) => RES.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
   const PRESETS = {
     low: { label: 'Low', res: 0.75, shadows: 0, ao: 'off', bloom: 'off', aa: 'fxaa', view: 'near', rain: 0.45, live: 'normal' },
-    medium: { label: 'Medium', res: snapRes(Math.min(devicePixelRatio, 1)), shadows: 1024, ao: 'off', bloom: 'half', aa: 'msaa2', view: 'medium', rain: 0.75, live: 'normal' },
+    medium: { label: 'Medium', res: snapRes(Math.min(devicePixelRatio, 1)), shadows: 1024, ao: 'off', bloom: 'half', aa: 'smaa', view: 'medium', rain: 0.75, live: 'normal' },
     high: { label: 'High', res: snapRes(Math.min(devicePixelRatio, 1.5)), shadows: 2048, ao: 'off', bloom: 'half', aa: 'msaa4', view: 'far', rain: 1, live: 'busy' },
-    ultra: { label: 'Ultra', res: snapRes(Math.min(devicePixelRatio * 1.5, 2)), shadows: 4096, ao: 'full', bloom: 'full', aa: 'smaa', view: 'max', rain: 1.25, live: 'busy' },
+    // Ultra renders at the screen's real resolution; Custom (Render resolution) can still go up to 2×
+    ultra: { label: 'Ultra', res: snapRes(Math.min(devicePixelRatio, 2)), shadows: 4096, ao: 'half', bloom: 'full', aa: 'msaa4', view: 'max', rain: 1.25, live: 'busy' },
   };
   const VIEW = { near: { far: 300, detail: 150, lod: 110 }, medium: { far: 420, detail: 200, lod: 160 }, far: { far: 520, detail: 270, lod: 230 }, max: { far: 700, detail: 360, lod: 320 } };
   // liveliness: share of the vehicle pool (200) and pedestrian pool (180) out on the streets
   const LIVE = { calm: { traffic: 0.4, people: 0.35 }, normal: { traffic: 0.7, people: 0.5 }, busy: { traffic: 0.85, people: 0.72 }, packed: { traffic: 1, people: 1 } };
-  const derive = (c) => ({ ...c, ...VIEW[c.view], label: c.label || 'Custom', shadowEvery: c.shadows >= 2048 ? 1 : c.shadows ? 2 : 3, msaa: { off: 0, fxaa: 0, msaa2: 2, msaa4: 4, smaa: 4 }[c.aa], bloomScale: c.bloom === 'full' ? 1 : 0.5 });
+  const derive = (c) => ({ ...c, ...VIEW[c.view], label: c.label || 'Custom', shadowEvery: c.shadows >= 4096 ? 2 : c.shadows >= 2048 ? 1 : c.shadows ? 2 : 3, msaa: { off: 0, fxaa: 0, smaa: 0, msaa2: 2, msaa4: 4, msaa4smaa: 4 }[c.aa] ?? 0, bloomScale: c.bloom === 'full' ? 1 : 0.5 });
   const TIER_ORDER = ['low', 'medium', 'high'];
   const quality = { mode: 'auto', tier: isTouch ? 'low' : 'medium', stats: false, dyn: 1, dynRes: true, cfg: null, d: null };
   try {
     const s = JSON.parse(localStorage.getItem('blr.gfx') || 'null');
     if (s && s.cfg && VIEW[s.cfg.view]) Object.assign(quality, { mode: s.mode, tier: s.tier || quality.tier, dynRes: s.dynRes !== false, cfg: s.cfg });
+    // a saved preset (not Custom) follows the preset's current definition, so preset changes reach existing players
+    if (s && s.mode !== 'custom' && PRESETS[quality.tier]) quality.cfg = { ...PRESETS[quality.tier], live: (s.cfg && s.cfg.live) || PRESETS[quality.tier].live };
   } catch (e) { /* storage blocked: defaults */ }
   if (!quality.cfg) quality.cfg = { ...PRESETS[quality.tier] };
   quality.d = derive(quality.cfg);
@@ -307,9 +310,26 @@ async function init() {
   composer.insertPass(gtao, 1);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
-  // anti-aliasing after tone mapping: FXAA (cheap) on Low, SMAA on top of MSAA on Ultra
+  // anti-aliasing after tone mapping: FXAA (cheapest) on Low, SMAA on Medium. MSAA (High/Ultra) happens in the render
+  // target instead; on integrated graphics its resolve alone costs more than SMAA, so it's kept for dedicated GPUs.
   const fxaa = new ShaderPass(FXAAShader); composer.addPass(fxaa);
   const smaa = new SMAAPass(innerWidth, innerHeight); composer.addPass(smaa);
+  // contrast-adaptive sharpening (after AMD FidelityFX CAS) whenever we render below the screen's resolution,
+  // so dynamic resolution and Low/Medium on high-DPI screens stay crisp. About 0.3 ms.
+  const sharpen = new ShaderPass({
+    uniforms: { tDiffuse: { value: null }, texel: { value: new THREE.Vector2() }, amount: { value: 0.6 } },
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 texel; uniform float amount; varying vec2 vUv;
+      void main() {
+        vec3 a = texture2D(tDiffuse, vUv - vec2(0.0, texel.y)).rgb, b = texture2D(tDiffuse, vUv - vec2(texel.x, 0.0)).rgb, c = texture2D(tDiffuse, vUv).rgb;
+        vec3 d = texture2D(tDiffuse, vUv + vec2(texel.x, 0.0)).rgb, e = texture2D(tDiffuse, vUv + vec2(0.0, texel.y)).rgb;
+        vec3 mn = min(min(min(a, b), min(d, e)), c), mx = max(max(max(a, b), max(d, e)), c);
+        vec3 amp = sqrt(clamp(min(mn, 2.0 - mx) / max(mx, 1e-4), 0.0, 1.0));
+        vec3 w = amp * (-1.0 / mix(8.0, 5.0, amount));
+        gl_FragColor = vec4(clamp((c + (a + b + d + e) * w) / (1.0 + 4.0 * w), 0.0, 1.0), 1.0);
+      }`,
+  });
+  composer.addPass(sharpen);
   // GPU time per pass, measured only while the F3 overlay or the benchmark is on
   const gpu = gpuInfo(renderer), gpuT = createGpuTimer(renderer);
   let timing = false;
@@ -317,6 +337,8 @@ async function init() {
   function onResize() {
     camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
     const pr = renderer.getPixelRatio(); fxaa.material.uniforms.resolution.value.set(1 / (innerWidth * pr), 1 / (innerHeight * pr));
+    sharpen.uniforms.texel.value.set(1 / (innerWidth * pr), 1 / (innerHeight * pr));
+    sharpen.enabled = pr < devicePixelRatio * 0.95;
   }
   renderer.shadowMap.autoUpdate = false;
   // pick a preset; auto keeps your liveliness choice when it moves between presets
@@ -337,7 +359,7 @@ async function init() {
       if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
     }
     bloom.enabled = c.bloom !== 'off'; gtao.enabled = c.ao !== 'off';
-    fxaa.enabled = c.aa === 'fxaa'; smaa.enabled = c.aa === 'smaa';
+    fxaa.enabled = c.aa === 'fxaa'; smaa.enabled = c.aa === 'smaa' || c.aa === 'msaa4smaa';
     weather.state.density = c.rain;
     camera.far = Math.max(c.far + 400, 1250); camera.updateProjectionMatrix();
     onResize(); renderer.shadowMap.needsUpdate = true;

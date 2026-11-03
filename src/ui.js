@@ -260,7 +260,7 @@ export function createUI(world, actions, input) {
     gShadows: ['shadows', [[0, 'Off'], [1024, 'Low'], [2048, 'High'], [4096, 'Ultra (wider, sharper)']]],
     gAO: ['ao', [['off', 'Off'], ['half', 'Half resolution'], ['full', 'Full resolution']]],
     gBloom: ['bloom', [['off', 'Off'], ['half', 'Half resolution'], ['full', 'Full resolution']]],
-    gAA: ['aa', [['off', 'Off'], ['fxaa', 'FXAA'], ['msaa2', 'MSAA 2×'], ['msaa4', 'MSAA 4×'], ['smaa', 'MSAA 4× + SMAA']]],
+    gAA: ['aa', [['off', 'Off'], ['fxaa', 'FXAA'], ['smaa', 'SMAA'], ['msaa2', 'MSAA 2×'], ['msaa4', 'MSAA 4×'], ['msaa4smaa', 'MSAA 4× + SMAA']]],
     gView: ['view', [['near', 'Near'], ['medium', 'Medium'], ['far', 'Far'], ['max', 'Max']]],
     gRain: ['rain', [[0.45, 'Light'], [0.75, 'Medium'], [1, 'Heavy'], [1.25, 'Ultra']]],
   };
