@@ -36,13 +36,26 @@ export function createUI(world, actions, input) {
   const side = { offer: false, queue: [] };
   const cardEl = $('card');
   const compactShown = () => cardEl.classList.contains('show') && cardEl.classList.contains('compact');
-  function hideCard() { cardEl.classList.remove('show'); clearTimeout(card._t); if (!side.offer && side.queue.length) setTimeout(() => card(...side.queue.shift()), 400); }
+  function hideCard() { cardEl.classList.remove('show'); clearTimeout(card._t); setTimeout(fitRight, 0); if (!side.offer && side.queue.length) setTimeout(() => card(...side.queue.shift()), 400); }
   // compact = side card that doesn't cover the road while driving
+  // the compact card lives in the bottom-right column (above the speedometer); the full card in the middle of the screen
+  const hudEl = $('hud'), brEl = $('bottomRight'), speedoEl = $('speedo');
+  function placeCard(compact) { if (compact) brEl.insertBefore(cardEl, speedoEl); else if (cardEl.parentNode !== hudEl) hudEl.insertBefore(cardEl, $('banner')); }
+  // short screens: if the bottom-right column would reach the top-right panels, shrink the minimap (then hide it)
+  function fitRight() {
+    document.body.classList.remove('tight', 'cramped');
+    const busy = $('offer').classList.contains('on') || compactShown();
+    if (!busy || getComputedStyle(brEl).display === 'contents') return;
+    const hits = () => { const t = $('topRight').getBoundingClientRect(), b = brEl.getBoundingClientRect(); return b.top < t.bottom + 8; };
+    if (hits()) { document.body.classList.add('tight'); if (hits()) document.body.classList.add('cramped'); }
+  }
+  addEventListener('resize', fitRight);
   function card(ic, title, body, foot, compact = false) {
     if (compact && side.offer) { side.queue.push([ic, title, body, foot, compact]); return; }
+    placeCard(compact);
     cardEl.innerHTML = `<div class="e">${icon(ic)}</div><div class="k">PEAK BENGALURU MOMENT</div><div class="t">${title}</div><div class="b">${body}</div><div class="f">${foot} · click or ${kbd('dismiss')} to close</div>`;
     cardEl.classList.toggle('compact', compact);
-    cardEl.classList.remove('show'); void cardEl.offsetWidth; cardEl.classList.add('show');
+    cardEl.classList.remove('show'); void cardEl.offsetWidth; cardEl.classList.add('show'); fitRight();
     cardEl.onclick = hideCard;
     clearTimeout(card._t); card._t = setTimeout(hideCard, compact ? 4500 : 6000);
   }
@@ -406,13 +419,13 @@ export function createUI(world, actions, input) {
   let offerSecs = 20;
   function offer(o) {
     const el = $('offer');
-    if (!o) { el.classList.remove('on'); side.offer = false; if (side.queue.length && !compactShown()) setTimeout(() => !side.offer && side.queue.length && card(...side.queue.shift()), 350); return; }
+    if (!o) { el.classList.remove('on'); side.offer = false; setTimeout(fitRight, 0); if (side.queue.length && !compactShown()) setTimeout(() => !side.offer && side.queue.length && card(...side.queue.shift()), 350); return; }
     // a compact card in the slot goes back in the queue and returns after the offer
     if (compactShown() && card._last) { side.queue.unshift(card._last); cardEl.classList.remove('show'); clearTimeout(card._t); }
     side.offer = true; offerSecs = o.secs;
     el.innerHTML = `<div class="oh">${icon(o.icon)} ${o.app}</div><div class="ot">${o.title}</div><div class="os">${o.sub}</div><div class="obar"><span id="offerBar"></span></div><div class="ob"><button class="ok">${kbd('accept')} Accept</button><button class="no">${kbd('decline')} Decline</button></div>`;
     el.querySelector('.ok').onclick = () => o.onAccept(); el.querySelector('.no').onclick = () => o.onDecline();
-    el.classList.add('on');
+    el.classList.add('on'); fitRight();
   }
   const cardShow = card;
   function cardTracked(...a) { if (a[4]) card._last = a; cardShow(...a); }

@@ -108,7 +108,13 @@
   @keyframes tin { from { opacity: 0; transform: translateX(-12px); } }
 
   /* right-middle slot: job offer or compact card, never both (queued in ui.js) */
-  #offer, #card.compact { position: absolute; right: var(--gap); left: auto; top: max(340px, calc(50% - 80px)); width: 280px; }
+  /* bottom-right column: job offer or compact card, then the speedometer. They stack, so they can never overlap */
+  #bottomRight { position: absolute; right: var(--gap); bottom: var(--gap); display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+  #offer, #card.compact { position: relative; left: auto; top: auto; width: 280px; }
+  #offer:not(.on), #card.compact:not(.show) { position: absolute; bottom: 100%; right: 0; } /* out of the column until shown */
+  /* short screens: when the column would reach the minimap, the minimap shrinks and the Peak Bengaluru count steps aside */
+  body.tight #minimap { width: 120px; height: 120px; } body.tight #collectBox { display: none; }
+  body.cramped #topRight #minimap { display: none; }
   #offer { padding: 12px 14px; border-color: rgba(242,194,48,.6); pointer-events: auto; transform: translateX(calc(100% + 40px)); transition: transform .3s cubic-bezier(.2,.9,.3,1); }
   #offer.on { transform: none; }
   #offer .oh { font-size: var(--fs-xs); letter-spacing: 1.5px; color: var(--y); font-weight: 700; text-transform: uppercase; display: flex; gap: 6px; align-items: center; }
@@ -140,7 +146,7 @@
   #prompt.show { opacity: 1; }
 
   /* bottom-right: speed, with the fare meter on top when there is one */
-  #speedo { position: absolute; right: var(--gap); bottom: var(--gap); padding: 10px 16px 12px; min-width: 160px; text-align: right; }
+  #speedo { position: relative; padding: 10px 16px 12px; min-width: 160px; text-align: right; }
   #meter { padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
   #meter .lbl { font-size: var(--fs-xs); letter-spacing: 1.5px; color: var(--mute); font-weight: 700; }
   #fare { font-size: var(--fs-l); font-weight: 700; color: var(--mute); font-variant-numeric: tabular-nums; }
@@ -274,7 +280,7 @@
   #touch .acts button { width: 40px; height: 40px; } #touch .acts button .ic { width: 20px; height: 20px; }
   body.touch #bottomLeft { display: none; }
   /* with touch controls the speedo sits above the action row, in its compact one-row form */
-  body.touch #speedo { bottom: 144px; min-width: 0; padding: 6px 10px; display: grid; grid-template-columns: auto auto; gap: 0 12px; align-items: end; }
+  body.touch #bottomRight { bottom: 144px; } body.touch #speedo { min-width: 0; padding: 6px 10px; display: grid; grid-template-columns: auto auto; gap: 0 12px; align-items: end; }
   body.touch #meter { padding: 0 12px 0 0; margin: 0; border-bottom: 0; border-right: 1px solid var(--line); grid-row: span 3; } body.touch #meter .lbl, body.touch #earned { display: none; }
 
   /* narrow screens: same zones, tighter; nav, notifications and the right slot stack down the middle in that order */
@@ -289,7 +295,10 @@
     #nav.on { transform: none; } #nav .na .ic { width: 24px; height: 24px; } #nav .nd { font-size: var(--fs-m); }
     #toasts { top: 244px; left: 8px; right: 8px; width: auto; }
     .toast:nth-child(n+3) { display: none; } .toast .b { -webkit-line-clamp: 2; }
-    #offer, #card.compact { top: auto; bottom: 232px; left: 8px; right: 8px; width: auto; }
+    #bottomRight { display: contents; }
+    #offer, #offer:not(.on), #card.compact { position: absolute; top: auto; bottom: 232px; left: 8px; right: 8px; width: auto; }
+    #speedo { position: absolute; right: var(--gap); bottom: var(--gap); }
+    body.touch #speedo { bottom: 144px; }
     #offer { transform: translateY(40px); opacity: 0; transition: transform .3s, opacity .3s; } #offer.on { transform: none; opacity: 1; }
     #speedo { min-width: 0; padding: 6px 10px; display: grid; grid-template-columns: auto auto; gap: 0 12px; align-items: end; }
     #meter { padding: 0 12px 0 0; margin: 0; border-bottom: 0; border-right: 1px solid var(--line); grid-row: span 3; } #meter .lbl, #earned { display: none; }
@@ -321,14 +330,16 @@
   </div>
   <div id="nav" class="panel"></div>
   <div id="toasts"></div>
-  <div id="offer" class="panel"></div>
   <div id="card"></div>
   <div id="banner"></div>
   <div id="dialogue"></div>
   <div id="prompt" class="panel"></div>
+  <div id="bottomRight">
+  <div id="offer" class="panel"></div>
   <div id="speedo" class="panel">
     <div id="meter"><div class="lbl">METER</div><div id="fare">₹0</div><div id="rating"></div><div id="earned">₹0 · 0 rides</div></div>
     <div><span id="speed">0</span><span class="u">KM/H</span></div><div id="vname">Auto</div><div class="hb" title="Vehicle health"><span id="vhealth"></span></div>
+  </div>
   </div>
   <div id="bottomLeft"><button id="menuBtn" class="panel btn" aria-label="Pause menu"></button></div>
 </div>
