@@ -1,6 +1,6 @@
 // Central keymap: action → [primary, secondary] key codes (KeyboardEvent.code), saved in localStorage 'blr.keys'.
 // Gameplay asks input.down(action) for held keys and input.pressed(action) for one-shot presses; every hint uses input.label().
-// Esc (pause / close) and 1-9 (menu items) are fixed. Tab is left free for the phone.
+// Esc (pause / close) and 1-9 (menu items) are fixed.
 export const ACTIONS = [
   ['forward', 'Drive / walk forward', 'Move', ['KeyW', 'ArrowUp']],
   ['back', 'Brake / reverse / walk back', 'Move', ['KeyS', 'ArrowDown']],
@@ -16,6 +16,7 @@ export const ACTIONS = [
   ['decline', 'Decline a job', 'Actions', ['KeyN', null]],
   ['switchVehicle', 'Switch vehicle', 'Actions', ['KeyV', null]],
   ['radio', 'Radio (in a vehicle)', 'Actions', ['KeyK', null]],
+  ['phone', 'Phone', 'Interface', ['Tab', null]],
   ['map', 'Map · drop a pin', 'Interface', ['KeyM', null]],
   ['camera', 'Camera mode', 'Interface', ['KeyC', null]],
   ['photo', 'Photo mode', 'Interface', ['KeyP', null]],
@@ -27,10 +28,10 @@ export const ACTIONS = [
   ['live', 'Live Bengaluru sync', 'World', ['KeyL', null]],
   ['stats', 'Performance stats', 'World', ['F3', null]],
 ];
-export const FIXED = ['Escape', 'Tab', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9'];
-// standard-mapping gamepad buttons: A B X Y, LB RB, back start, L3, d-pad up / down
-const PAD = { interact: 0, vehicle: 1, horn: 2, camera: 3, call: 4, jump: 5, map: 8, run: 10, accept: 12, decline: 13 };
-const PAD_LABEL = { 0: 'A', 1: 'B', 2: 'X', 3: 'Y', 4: 'LB', 5: 'RB', 8: 'Back', 10: 'L3', 12: 'D-pad up', 13: 'D-pad down' };
+export const FIXED = ['Escape', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9'];
+// standard-mapping gamepad buttons: A B X Y, LB RB, back start, L3, d-pad up / down / right
+const PAD = { interact: 0, vehicle: 1, horn: 2, camera: 3, call: 4, jump: 5, map: 8, run: 10, accept: 12, decline: 13, phone: 15 };
+const PAD_LABEL = { 0: 'A', 1: 'B', 2: 'X', 3: 'Y', 4: 'LB', 5: 'RB', 8: 'Back', 10: 'L3', 12: 'D-pad up', 13: 'D-pad down', 15: 'D-pad right' };
 
 const NAMES = { Space: 'Space', ShiftLeft: 'Shift', ShiftRight: 'R Shift', ControlLeft: 'Ctrl', ControlRight: 'R Ctrl', AltLeft: 'Alt', AltRight: 'R Alt', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Enter: 'Enter', Backspace: 'Backspace', Escape: 'Esc', Tab: 'Tab', CapsLock: 'Caps', Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', Backslash: '\\' };
 export const keyName = (code) => !code ? '' : NAMES[code] || code.replace(/^Key|^Digit/, '').replace(/^Numpad/, 'Num ');

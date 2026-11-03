@@ -22,6 +22,7 @@ export function createUI(world, actions, input) {
 
   const toasts = $('toasts');
   function toast(title, body = '', ic = 'info', kind = '') {
+    if (api.onToast && api.onToast(title, body, ic, kind)) return; // gig news goes to the phone instead
     const el = document.createElement('div');
     el.className = 'toast ' + kind;
     el.innerHTML = `${icon(ic)}<div class="t">${title}</div>${body ? `<div class="b">${body}</div>` : ''}<span class="tx">${icon('close')}</span>`;
@@ -323,7 +324,7 @@ export function createUI(world, actions, input) {
     const { action, slot } = waiting;
     if (e.code === 'Escape') { waiting = null; msg(''); renderKeys(); return true; }
     if (e.code === 'Delete' || e.code === 'Backspace') { input.bind(action, slot, null); waiting = null; msg(`Cleared.`); renderKeys(); api.onKeysChanged && api.onKeysChanged(); return true; }
-    if (FIXED.includes(e.code)) { msg(`<b>${keyName(e.code)}</b> is reserved (Esc pauses, Tab is for the phone, 1-9 pick menu items). Try another key.`); return true; }
+    if (FIXED.includes(e.code)) { msg(`<b>${keyName(e.code)}</b> is reserved (Esc pauses and closes, 1-9 pick menu items). Try another key.`); return true; }
     const c = input.conflict(action, e.code);
     waiting = null;
     if (c) {
@@ -421,6 +422,7 @@ export function createUI(world, actions, input) {
     const el = $('offer');
     if (!o) { el.classList.remove('on'); side.offer = false; setTimeout(fitRight, 0); if (side.queue.length && !compactShown()) setTimeout(() => !side.offer && side.queue.length && card(...side.queue.shift()), 350); return; }
     // a compact card in the slot goes back in the queue and returns after the offer
+    if (api.onOffer) api.onOffer(o);
     if (compactShown() && card._last) { side.queue.unshift(card._last); cardEl.classList.remove('show'); clearTimeout(card._t); }
     side.offer = true; offerSecs = o.secs;
     el.innerHTML = `<div class="oh">${icon(o.icon)} ${o.app}</div><div class="ot">${o.title}</div><div class="os">${o.sub}</div><div class="obar"><span id="offerBar"></span></div><div class="ob"><button class="ok">${kbd('accept')} Accept</button><button class="no">${kbd('decline')} Decline</button></div>`;
@@ -434,7 +436,7 @@ export function createUI(world, actions, input) {
   const api = {
     offer, offerTick, nav, openMap, closeMap, get mapOpen() { return mapOpen; }, toast, card: cardTracked, dialogue, prompt, setZone, drawMinimap, update, sync,
     showSettings, hideSettings, settingsKey, showPause, hidePause, pauseKey, fmtTime, menu, closeMenu, frame, dismissAll, menuKey, fade, kbd, prefs,
-    get menuOpen() { return menuOpen; }, get fps() { return fps; }, onClosed: null, onOpened: null, onKeysChanged: null,
+    get menuOpen() { return menuOpen; }, get fps() { return fps; }, onClosed: null, onOpened: null, onKeysChanged: null, onToast: null, onOffer: null,
   };
   return api;
 }
