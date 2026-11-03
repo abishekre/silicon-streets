@@ -80,7 +80,7 @@ export function createSim({ traffic, people, trafficGroup, peopleGroup, ev, audi
     });
     const zones = flood.zones.filter((z) => z.level > 0.01).map((z) => [z.x, z.z, z.r, z.level, z.max]);
     const blockers = focus.blockers.map((b) => ({ x: b.x, z: b.z, speed: b.speed, r: b.r, isPlayer: b.isPlayer, vx: b.vx, vz: b.vz }));
-    const msg = { type: 'step', dts: dts.splice(0), t, rain, zones, knocks, ox, tum, focus: { x: focus.x, z: focus.z, fx: focus.fx, fz: focus.fz, density: focus.density, live: focus.live, blockers } };
+    const msg = { type: 'step', dts: dts.splice(0), t, rain, zones, knocks, ox, tum, focus: { x: focus.x, z: focus.z, fx: focus.fx, fz: focus.fz, density: focus.density, pdens: focus.pdens, live: focus.live, blockers } };
     if (spare) { msg.ret = spare; w.postMessage(msg, [spare]); spare = null; } else w.postMessage(msg);
     busy = true;
   }

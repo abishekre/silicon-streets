@@ -211,13 +211,14 @@ export function createGame(scene, world, people, ui, audio, hooks) {
   }
 
   // nearest interactable for the current situation
-  const extra = []; // walk-mode actions other modules add (the garage counter, dogs)
+  const extra = [], extraDrive = []; // actions other modules add: on foot (garage counter, dogs), driving (fuel pumps)
   function nearestAction(ctx) {
     if (ctx.mode === 'drive') {
       const p = ctx.player.pos;
       const G = ride.kind === 'walk' ? null : GIGS[ride.kind];
       if (G && ctx.player.type === ride.kind && ride.state === 'waiting' && dist(p, ride.from) < RING_R + 5) return { label: G.pickLabel, run: () => pickup(ctx) };
       if (G && ctx.player.type === ride.kind && ride.state === 'riding' && dist(p, ride.to) < RING_R + 5) return { label: G.dropLabel, run: () => dropoff(ctx) };
+      for (const fn of extraDrive) { const a = fn(p, ctx); if (a) return a; }
       return null;
     }
     if (ctx.mode === 'interior' && ctx.venue) return ctx.venue.action(ctx.walker.pos, ctx.walker.y);
@@ -409,7 +410,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
   }
 
   return {
-    addAction: (fn) => extra.push(fn), menuFor,
+    addAction: (fn) => extra.push(fn), addDriveAction: (fn) => extraDrive.push(fn), menuFor,
     walkGigs: Object.entries(WALK).map(([id, G]) => ({ id, app: G.app, icon: G.icon, word: G.word })),
     // ask for an on-foot job soon (after "leave it at the garage")
     walkGigNow: () => { if (ride.state === 'cooldown') ride.timer = Math.min(ride.timer, 1.5); },

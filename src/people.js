@@ -363,7 +363,8 @@ export function createPeople(scene, world) {
     const um = rain > 0.15;
     frameNo++;
     // liveliness decides how many of the pool are out; the rest aren't drawn or simulated
-    const active = Math.round(N * (focus.live ? focus.live.people : 0.5));
+    // pdens follows the day: office rush, quiet afternoons, evening crowds, near-empty nights
+    const active = Math.round(N * (focus.live ? focus.live.people : 0.5) * (focus.pdens ?? 1));
     for (const k of Object.keys(I)) I[k].count = active;
     peds.forEach((p, i) => {
       if (i >= active) { p.x = p.z = 1e6; p.road = 0; return; }

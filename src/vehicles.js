@@ -196,7 +196,8 @@ export class Player {
     this.steer = damp(this.steer, input.steer, 8, dt);
     // a battered vehicle pulls to one side and wobbles; a broken one won't go
     if (this.health < 35) this.steer += Math.sin(performance.now() * 0.006) * 0.12 + 0.05;
-    if (this.broken) input = { ...input, throttle: Math.min(0, input.throttle) * 0.3 };
+    // broken, or out of fuel (this.dry, from src/realism.js): it won't go
+    if (this.broken || this.dry) input = { ...input, throttle: Math.min(0, input.throttle) * 0.3 };
     if (input.throttle > 0) {
       if (fs < -0.3) fs += st.brake * dt;
       else fs += st.accel * dt * Math.max(0, 1 - fs / max);

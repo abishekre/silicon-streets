@@ -208,6 +208,7 @@ export function createUI(world, actions, input) {
     $('money').innerHTML = `₹${Math.round(d.wallet.money)}${owed ? `<span class="owed" title="Owed: Traffic Police dues ₹${Math.round(d.wallet.debt || 0)}, garage loan ₹${Math.round(d.wallet.loan || 0)}">−₹${owed}</span>` : ''}`;
     put('respect', `${icon('respect')}${Math.round(d.wallet.respect)}`); $('respect').className = d.wallet.respect < 30 ? 'low' : '';
     if (!cache.energy) { cache.energy = 1; $('energy').insertAdjacentHTML('afterbegin', icon('bolt')); }
+    if (d.fuel != null) { $('vfuel').style.width = `${d.fuel}%`; $('vfuel').style.background = d.fuel < 15 ? '#ff5252' : '#4fc3f7'; }
     $('vhealth').style.width = `${d.health}%`; $('vhealth').style.background = d.health < 30 ? '#ff5252' : d.health < 60 ? '#ffb300' : '#3ddc84';
     $('energyBar').style.width = `${d.wallet.energy}%`;
     $('energyBar').style.background = d.wallet.energy < 20 ? '#ff5252' : d.wallet.energy < 45 ? '#ffb300' : '#3ddc84';

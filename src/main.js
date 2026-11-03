@@ -32,6 +32,7 @@ import { createSim } from './sim.js';
 import { createGarage } from './garage.js';
 import { createDogs } from './dogs.js';
 import { createVenues } from './venues.js';
+import { createRealism } from './realism.js';
 import { gpuInfo, createGpuTimer, instrumentPasses, createBenchmark } from './perf.js';
 import { createInput } from './input.js';
 import { createOverlays } from './overlay.js';
@@ -249,6 +250,15 @@ async function init() {
   tow.onImpound = () => garage.impounded();
   game.addAction((w) => garage.action(w));
   const venues = createVenues({ world, ui, audio, game, hooks });
+  // fuel and CNG stations, speed breakers, speed cameras, power cuts (src/realism.js)
+  const realism = createRealism({ world, ui, audio, player, game, hooks });
+  game.addDriveAction((p) => realism.fillAction(p));
+  const flashEl = Object.assign(document.createElement('div'), { style: 'position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:44' }); document.body.appendChild(flashEl);
+  const realismCtx = {
+    shake: (k) => { shake = Math.max(shake, k); },
+    flash: () => { flashEl.style.transition = 'none'; flashEl.style.opacity = 0.85; requestAnimationFrame(() => { flashEl.style.transition = 'opacity .6s'; flashEl.style.opacity = 0; }); },
+    notify: (title, body, ic) => (phone && phone.notify ? phone.notify('Traffic Police', ic, title, body) : ui.toast(title, body, ic)),
+  };
   game.addAction((w) => { const m = venues.mall; if (!m) return null; const d = Math.hypot(w.x - m.x, w.z - m.z); return d < 3 ? { d, label: `go into ${m.name}`, run: () => hooks.enterVenue('mall', { street: m }) } : null; });
   // street dogs: pet them, feed them, befriend one; some chase you at night (src/dogs.js)
   const dogs = createDogs(scene, world, ui, audio, game.wallet);
@@ -259,7 +269,7 @@ async function init() {
     onNearMiss(d) { game.wallet.respect = Math.max(0, game.wallet.respect - 2); ui.toast(`You nearly hit ${d.name}`, 'It jumped clear. The chai stall saw everything.', 'paw'); },
   };
   const places = [
-    garage.place, ...(venues.mall ? [{ name: venues.mall.name, x: venues.mall.x, z: venues.mall.z, icon: 'city' }] : []),
+    garage.place, ...realism.places(), ...(venues.mall ? [{ name: venues.mall.name, x: venues.mall.x, z: venues.mall.z, icon: 'city' }] : []),
     ...world.stations.map((s) => ({ name: `${s.name} Metro`, x: s.ex, z: s.ez, icon: 'metro' })),
     ...(world.vidhana ? [{ name: 'Vidhana Soudha', x: world.vidhana.fx, z: world.vidhana.fz, icon: 'landmark' }] : []),
     ...(world.stadium ? [{ name: 'Chinnaswamy Stadium', x: world.stadium.x, z: world.stadium.z + world.stadium.r + 15, icon: 'cricket' }] : []),
@@ -314,14 +324,14 @@ async function init() {
   // ---------- save / load: one slot in this browser ----------
   function saveGame() {
     const p = player.pos;
-    try { localStorage.setItem('blr.save', JSON.stringify({ v: 1, hours: state.hours, day: state.day, weather: state.weather, vehicle: player.type, pos: [p.x, p.z, player.heading], wallet: { ...game.wallet }, found: game.found, garage: garage.save(), impounded: tow.impounded, dogs: dogs.save() })); return true; } catch (e) { return false; }
+    try { localStorage.setItem('blr.save', JSON.stringify({ v: 1, hours: state.hours, day: state.day, weather: state.weather, vehicle: player.type, pos: [p.x, p.z, player.heading], wallet: { ...game.wallet }, found: game.found, realism: realism.save(), garage: garage.save(), impounded: tow.impounded, dogs: dogs.save() })); return true; } catch (e) { return false; }
   }
   function loadGame() {
     let s = null; try { s = JSON.parse(localStorage.getItem('blr.save') || 'null'); } catch (e) { /* storage blocked */ }
     if (!s || s.v !== 1) return false;
     Object.assign(game.wallet, s.wallet); state.hours = s.hours; state.day = s.day; state.weather = s.weather; weather.set(s.weather);
     state.vehicle = s.vehicle; player.setType(s.vehicle); player.pos.set(s.pos[0], 0, s.pos[1]); player.heading = s.pos[2]; player.park(); game.restore(s.found);
-    if (s.impounded) tow.impoundNow(player); garage.load(s.garage); dogs.load(s.dogs); if (!garage.owns(player.type)) player.setType('auto');
+    if (s.impounded) tow.impoundNow(player); garage.load(s.garage); dogs.load(s.dogs); realism.load(s.realism); if (!garage.owns(player.type)) player.setType('auto');
     ui.sync(state); return true;
   }
   function quitToTitle() {
@@ -464,6 +474,10 @@ async function init() {
     }
   }
   function summon() {
+    if (state.mode === 'drive' && player.dry && !player.broken) {
+      ui.fade(() => { realism.refuel(25, 150, 'Mechanic Anna: a can of fuel'); state.hours = (state.hours + 0.25) % 24; ui.toast('Mechanic anna brought a can', '₹150. "Fill up properly next time, anna. Bunks are on the map."', 'wrench'); }, 'Mechanic anna is on the way with a can…');
+      return;
+    }
     if (state.mode === 'drive' && player.broken) {
       // roadside mechanic: a fade, a bill, a working vehicle
       ui.fade(() => {
@@ -868,7 +882,7 @@ async function init() {
     }
     const L = Math.max(atm.lights, ws.cloud * ws.rain * 0.35);
     mark('atmos');
-    world.update({ hours: state.hours, lights: L, wet: ws.wet, time: t, dt, cam: camera.position, far: fogFar, detail: tierCfg().detail, lod: tierCfg().lod });
+    world.update({ hours: state.hours, lights: L * realism.lightsK, wet: ws.wet, time: t, dt, cam: camera.position, far: fogFar, detail: tierCfg().detail, lod: tierCfg().lod });
     player.setNight(L, state.mode === 'drive'); traffic.setNight(L); metro.setNight(L);
     mark('world');
 
@@ -891,7 +905,9 @@ async function init() {
       // rush hour fills the roads, late night empties them; floods slow everyone down
       const hr = state.hours, density = (hr >= 8.5 && hr < 11) || (hr >= 17.5 && hr < 21) ? 1 : hr < 5.5 || hr >= 23 ? 0.35 : 0.72;
       const cdir = camera.getWorldDirection(tmp);
-      const focus = { x: f.x, z: f.z, blockers, density, live: LIVE[tierCfg().live] || LIVE.normal, fx: cdir.x, fz: cdir.z, drag: (x, z) => 1 - Math.min(0.7, flood.depthAt(x, z) * 2.2) };
+      // people out on the street follow the clock: office rush, quiet afternoons, evening crowds, empty nights
+      const pdens = hr < 5 ? 0.15 : hr < 7 ? 0.45 : hr < 11 ? 1 : hr < 17 ? 0.7 : hr < 21.5 ? 1 : hr < 23.5 ? 0.5 : 0.25;
+      const focus = { pdens, x: f.x, z: f.z, blockers, density, live: LIVE[tierCfg().live] || LIVE.normal, fx: cdir.x, fz: cdir.z, drag: (x, z) => 1 - Math.min(0.7, flood.depthAt(x, z) * 2.2) };
       mark('player');
       signals.update(dt, state.mode === 'drive' ? player : null, ui, game.wallet);
       sim.step(dt, t, focus, ws.rain); mark('traffic'); // traffic + people: in the worker when it's running, else here
@@ -927,6 +943,7 @@ async function init() {
     if (wd > 0.3 && player.type === 'auto' && once('stall', 30)) ui.toast('Engine sputtering', 'Water is up to the floorboard. Go slow or you will stall.', 'drop');
     edges.update(dt, camera.position, atm.hor, atm.night);
     if (!state.paused && state.mode !== 'interior' && state.mode !== 'metro') life.update(dt, { hours: state.hours, day: state.day, focus: f, mode: state.mode, zone: $('locName').textContent, lights: L, camera, driving: state.mode === 'drive', speed: state.mode === 'drive' ? Math.abs(player.speed) : W.speed });
+    if (!state.paused) realism.update(dt, { mode: state.mode, lights: L, ...realismCtx });
     if (!state.paused && state.mode !== 'interior' && state.mode !== 'metro') dogs.update(dt, t, { mode: state.mode, player, walker: W.pos, walkSpeed: W.speed, lights: L, peds: people.peds, ...dogEvents });
     if (!state.paused && state.mode !== 'interior' && state.mode !== 'metro' && edges.near(f)) ui.toast('Road closed', 'Namma Metro Phase 3 work since 2017. Diversion ahead (there is no diversion).', 'cone');
     const rainHere = state.mode === 'interior' ? ws.rain * 0.3 : ws.rain;
@@ -938,8 +955,8 @@ async function init() {
       if (z.name !== lastZoneName) { lastZoneName = z.name; if (z.name === 'Vidhana Soudha') ui.toast('Look up!', `Drag the mouse up (or press ${K('camera')} for first person) to read the inscription.`, 'landmark'); }
     }
     uiT -= rawDt;
-    if (uiT <= 0) { uiT = 1 / 12; ui.update({ hours: state.hours, weather: state.weather, temp: ws.temp, live: state.live, speed: player.speed, vehicle: VEHICLE_STATS[player.type].label, vehicleType: player.type, mode: state.mode, ride: game.ride, collected: game.collected, totalCollect: game.totalCollectibles, wallet: game.wallet, rawDt: 0, dayName: life.dayName(state.day), health: player.health });
-    if (state.mode !== 'interior') ui.drawMinimap(f, state.mode === 'drive' ? player.heading : W.yaw, [...game.markers(), ...garage.markers(), ...(pinBeam.visible ? [{ x: pinBeam.position.x, z: pinBeam.position.z, c: '#ff4d6d', big: true }] : []), ...(state.mode === 'walk' ? [{ x: player.pos.x, z: player.pos.z, c: '#ffcf3f', icon: 'V', big: true }] : [])], traffic.vehicles, nav.route); }
+    if (uiT <= 0) { uiT = 1 / 12; ui.update({ fuel: realism.fuel, hours: state.hours, weather: state.weather, temp: ws.temp, live: state.live, speed: player.speed, vehicle: VEHICLE_STATS[player.type].label, vehicleType: player.type, mode: state.mode, ride: game.ride, collected: game.collected, totalCollect: game.totalCollectibles, wallet: game.wallet, rawDt: 0, dayName: life.dayName(state.day), health: player.health });
+    if (state.mode !== 'interior') ui.drawMinimap(f, state.mode === 'drive' ? player.heading : W.yaw, [...game.markers(), ...garage.markers(), ...realism.markers(), ...(pinBeam.visible ? [{ x: pinBeam.position.x, z: pinBeam.position.z, c: '#ff4d6d', big: true }] : []), ...(state.mode === 'walk' ? [{ x: player.pos.x, z: player.pos.z, c: '#ffcf3f', icon: 'V', big: true }] : [])], traffic.vehicles, nav.route); }
     ui.frame(rawDt);
 
     mark('ui');
@@ -967,7 +984,7 @@ async function init() {
   console.info(`[silicon-streets] shaders ready in ${Math.round(performance.now() - tc)} ms`);
   frame();
   // debug handle for automated checks: __game.step(n) advances n frames synchronously
-  window.__game = { venues, phone, garage, dogs, sim, state, player, world, actions, weather, camera, keys: input.held, input, overlays, ui, life, audio, renderer, game, W, hooks, traffic, prof, scene, composer, sun, bloom, gtao, quality, get phys() { return phys; }, flood, edges, nav, people, signals, camCtl, tow, step: (n = 1, dt = 1 / 30) => { for (let i = 0; i < n; i++) tick(dt); } };
+  window.__game = { realism, venues, phone, garage, dogs, sim, state, player, world, actions, weather, camera, keys: input.held, input, overlays, ui, life, audio, renderer, game, W, hooks, traffic, prof, scene, composer, sun, bloom, gtao, quality, get phys() { return phys; }, flood, edges, nav, people, signals, camCtl, tow, step: (n = 1, dt = 1 / 30) => { for (let i = 0; i < n; i++) tick(dt); } };
 }
 
 init().catch((e) => {

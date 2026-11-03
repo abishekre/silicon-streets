@@ -158,6 +158,7 @@
   #speedo .u { font-size: var(--fs-xs); color: var(--mute); letter-spacing: 1px; margin-left: 4px; }
   #vname { font-size: var(--fs-xs); color: var(--y); font-weight: 700; margin-top: 4px; }
   #speedo .hb { height: 5px; margin-top: 6px; border-radius: 3px; background: rgba(255,255,255,.15); overflow: hidden; } #vhealth { display: block; height: 100%; width: 100%; background: var(--g); transition: width .3s; }
+  #speedo .fb { margin-top: 3px; height: 3px; } #vfuel { display: block; height: 100%; width: 100%; background: #4fc3f7; transition: width .3s; }
 
   #bottomLeft { position: absolute; left: var(--gap); bottom: var(--gap); display: flex; gap: 8px; align-items: center; pointer-events: auto; }
   .btn { pointer-events: auto; cursor: pointer; color: var(--txt); font: 600 var(--fs-s) 'Space Grotesk'; padding: 8px 12px; display: inline-flex; gap: 8px; align-items: center; }
@@ -438,7 +439,7 @@
   <div id="offer" class="panel"></div>
   <div id="speedo" class="panel">
     <div id="meter"><div class="lbl">METER</div><div id="fare">₹0</div><div id="rating"></div><div id="earned">₹0 · 0 rides</div></div>
-    <div><span id="speed">0</span><span class="u">KM/H</span></div><div id="vname">Auto</div><div class="hb" title="Vehicle health"><span id="vhealth"></span></div>
+    <div><span id="speed">0</span><span class="u">KM/H</span></div><div id="vname">Auto</div><div class="hb" title="Vehicle health"><span id="vhealth"></span></div><div class="hb fb" title="Fuel"><span id="vfuel"></span></div>
   </div>
   </div>
   <div id="bottomLeft"><button id="menuBtn" class="panel btn" aria-label="Pause menu"></button></div>
