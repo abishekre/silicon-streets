@@ -87,7 +87,15 @@ function simStep(m) {
 }
 function dispatch(m) {
   if (m.type === 'simInit') simInit();
-  else if (m.type === 'step') { if (sim) simStep(m); }
+  // the page's traffic and people at takeover (src/sim.js)
+  else if (m.type === 'simSync' && sim) {
+    m.V.forEach((v, i) => Object.assign(sim.traffic.vehicles[i], v)); m.P.forEach((p, i) => Object.assign(sim.people.peds[i], p));
+    sim.traffic.adopt(); sim.people.adopt();
+  }
+  else if (m.type === 'step') {
+    // a failed step hands the simulation back to the page (src/sim.js runs it there) instead of freezing traffic
+    if (sim) try { simStep(m); } catch (err) { sim = null; self.postMessage({ type: 'simError', message: String((err && err.stack) || err) }); }
+  }
   else handle(m);
 }
 self.onmessage = (e) => {

@@ -3,9 +3,8 @@ import { box, merge, part, makeRng } from './util.js';
 import { textTexture } from './textures.js';
 import { createCharacter } from './people.js';
 
-// Walk-in places bigger than one room: a Namma Metro station (street entrance, escalator up to the concourse,
-// tokens, frisking, ticket gates, platform with screen doors) and the Garden City Mega Mall (three floors round an
-// atrium, escalators, food court, cinema, arcade). A venue answers the same questions the street does
+// Walk-in places bigger than one room: the Garden City Mega Mall (three floors round an atrium, escalators,
+// food court, cinema, arcade). Metro stations are a ticket menu at the street kiosk, then the ride. A venue answers the same questions the street does
 // (collide, groundAt), so walking, jumping and falling work indoors with the walker code unchanged.
 const SHIRTS = ['#e53935', '#1e88e5', '#fdd835', '#43a047', '#fafafa', '#8e24aa', '#ff7043', '#263238'];
 const SKIN = ['#8d5a3b', '#a8714a', '#6e4429'];
@@ -61,7 +60,7 @@ export function createVenues({ world, ui, audio, game, hooks }) {
   }
   function begin(kind, name, bounds) {
     dyn.clear();
-    V = { kind, name, bounds, solids: [], ramps: [], spots: [], parts: [], glows: [], meshes: [], npcs: [], gates: [], rng: makeRng(kind === 'mall' ? 7 : name.length * 31 + 5), t: 0, said: new Set(), y: 0 };
+    V = { kind, name, bounds, solids: [], ramps: [], spots: [], parts: [], glows: [], meshes: [], npcs: [], rng: makeRng(7), t: 0, said: new Set(), y: 0 };
     scene.background = new THREE.Color(kind === 'mall' ? '#d9d4ca' : '#cfd3d6');
   }
   function finish() {
@@ -72,69 +71,6 @@ export function createVenues({ world, ui, audio, game, hooks }) {
   }
 
   // ---------- Namma Metro station ----------
-  function buildStation(st) {
-    const B = { x1: -14, x2: 14, z1: -11, z2: 25 };
-    begin('metro', st.name, B);
-    const P = '#7b2d8e', WALL = '#e8e4dc', FLOOR = '#d5d0c6';
-    // outer shell (ground floor walls, with the street door in the south wall)
-    solid(-14.4, -14, -11, 25, 0, 16, WALL); solid(14, 14.4, -11, 25, 0, 16, WALL); solid(-14, 14, 25, 25.4, 0, 16, WALL);
-    solid(-14, -1.6, -11.4, -11, 0, 16, WALL); solid(1.6, 14, -11.4, -11, 0, 16, WALL); solid(-1.6, 1.6, -11.4, -11, 3, 16, WALL);
-    V.parts.push(box(28, 0.05, 36, 0, 0, 7, FLOOR));
-    sign([`${st.name.toUpperCase()} METRO`, 'ನಮ್ಮ ಮೆಟ್ರೋ'], 6, 1.2, 0, 3.8, -10.9, 0, { bg: P });
-    spot(0, -10.2, 0, 'leave the station', () => hooks.exitVenue(), 2.2);
-    // ground floor: escalator and stairs up to the concourse (y 5)
-    ramp(2, 4, -9, 0, 0, 5, '#90a4ae', 0.9); ramp(-4, -2, -9, 0, 0, 5, '#a1887f');
-    sign('CONCOURSE · PLATFORMS', 6, 0.7, 0, 3, -4.5, 0, { bg: P });
-    // concourse slab, with the stairwell opening over the ground floor kept clear
-    slab(-14, 14, 0, 25, 5, FLOOR); slab(-14, -4, -11, 0, 5, FLOOR); slab(4, 14, -11, 0, 5, FLOOR); slab(-2, 2, -11, 0, 5, FLOOR);
-    // the ground floor ends at the stairs: no wandering under the concourse
-    solid(-14, -4.1, -0.2, 0, 0, 4.6, WALL); solid(-1.9, 1.9, -0.2, 0, 0, 4.6, WALL); solid(4.1, 14, -0.2, 0, 0, 4.6, WALL);
-    // ticket counter and token machines on the west side
-    solid(-14, -10, 1, 4, 5, 6.1, '#5d4037'); glow(4, 0.5, 0.1, -12, 7.4, 1, '#ffd54f');
-    sign('TICKETS · TOKENS ₹20', 4, 0.8, -12, 7.4, 4.05, 0, { bg: P });
-    const clerk = createCharacter(dyn, { shirt: P, pants: '#222', skin: '#8d5a3b' }); clerk.root.position.set(-12, 5, 2); clerk.root.rotation.y = 0;
-    spot(-12, 4.8, 5, 'buy a token (₹20)', () => buyToken());
-    for (const x of [-8.5, -7]) { solid(x - 0.5, x + 0.5, 0.2, 1, 5, 6.8, '#37474f'); glow(0.6, 0.4, 0.05, x, 6.3, 1.03, '#4fc3f7'); spot(x, 1.8, 5, 'use the token machine (₹20)', () => buyToken()); }
-    // security: you go through the frisking booth or nowhere
-    solid(-14, -1.2, 7, 7.2, 5, 6.2, '#90a4ae'); solid(1.2, 14, 7, 7.2, 5, 6.2, '#90a4ae');
-    solid(-1.25, -1.15, 6, 8.2, 5, 7.3, '#455a64'); solid(1.15, 1.25, 6, 8.2, 5, 7.3, '#455a64'); V.parts.push(box(2.5, 0.12, 2.2, 0, 7.3, 7.1, '#455a64'));
-    const guard = createCharacter(dyn, { shirt: '#5d6b44', pants: '#37412a', skin: '#6e4429' }); guard.root.position.set(1.8, 5, 7.6); guard.root.rotation.y = -Math.PI / 2;
-    V.frisk = { x: 0, z: 7.1, y: 5, done: false };
-    // ticket gates: tap a token or a QR from the phone
-    solid(-14, -4.2, 11, 11.3, 5, 6.2, '#cfd8dc'); solid(4.2, 14, 11, 11.3, 5, 6.2, '#cfd8dc');
-    for (let i = 0; i < 4; i++) {
-      const x0 = -4.2 + i * 2.1; solid(x0, x0 + 0.5, 10.5, 11.8, 5, 6.1, '#b0bec5'); // gate cabinet
-      const gate = { x1: x0 + 0.5, x2: x0 + 2.1, z1: 11, z2: 11.3, y0: 5, y1: 6, open: 0 };
-      V.gates.push(gate); V.solids.push(gate);
-      glow(0.3, 0.06, 0.3, x0 + 0.25, 6.12, 11.2, '#69f0ae');
-    }
-    solid(4.2 - 0.4, 4.2, 10.5, 11.8, 5, 6.1, '#b0bec5');
-    sign('TAP TOKEN · SCAN QR', 4, 0.6, 0, 7.8, 11.4, 0, { bg: P });
-    // escalator up to the platform (y 10)
-    ramp(-1, 1, 12.5, 19, 5, 10, '#90a4ae', 0.9); ramp(2, 3.5, 12.5, 19, 5, 10, '#a1887f');
-    slab(-14, 14, 19, 25, 10, '#c9c3b6'); slab(-14, -1.1, 12, 19, 10, '#c9c3b6'); slab(3.6, 14, 12, 19, 10, '#c9c3b6'); slab(1.1, 1.9, 12, 19, 10, '#c9c3b6');
-    // platform: screen doors along the track wall, a train beyond, benches, the next-train board
-    for (let x = -12; x <= 12; x += 4) { solid(x - 1.9, x + 1.9, 24.4, 24.6, 10, 12.4, '#e0f2f1'); V.parts.push(box(0.15, 2.4, 0.3, x + 1.95, 11.2, 24.5, '#455a64')); glow(1.2, 0.08, 0.05, x, 12.5, 24.35, '#ff5252'); }
-    V.parts.push(box(28, 3.2, 0.1, 0, 11.6, 25.6, '#7b2d8e')); // the train waiting behind the doors
-    for (let x = -10; x <= 10; x += 5) V.glows.push(box(1.6, 0.9, 0.05, x, 12, 25.5, '#cfe8ff'));
-    sign(['Next train: Purple Line', 'Whitefield 2 min · Challaghatta 5 min'], 7, 1.2, 0, 14, 19.2, 0, { bg: '#111', fg: '#ffd54f', font: '700 48px "Space Grotesk"' });
-    for (const x of [-9, 9]) { solid(x - 1.2, x + 1.2, 21, 21.6, 10, 10.5, '#8d6e63'); spot(x, 20.4, 10, 'sit and wait', () => hooks.rest(0.25, 6, 'You sat on the platform. Three trains went past. You were people-watching.')); }
-    spot(0, 23.4, 10, 'board the train', () => hooks.boardTrain(st), 3.5);
-    for (const x of [-6, -3, 5, 8, 11]) person(x, 22.5 + V.rng() * 1.5, 10, Math.PI);
-    for (const x of [-11, -9.5, -8]) person(x, 5.6, 5, Math.PI); // queue at the counter
-    person(6, 3, 5, 0, [[6, 2], [10, 2], [10, 5], [6, 5]], 0.9);
-    // lights: long tube lights under each ceiling
-    for (const y of [4.6, 9.6, 15.6]) for (let z = -8; z < 25; z += 6) glow(10, 0.08, 0.25, 0, y, z, '#f5f5f5');
-    finish();
-    V.lines = ['Announcement: "Please stand on the right. Allow others to walk on the left."', 'Announcement: "Doors will open on the left. Mind the gap."', 'Announcement: "Passengers are requested not to sit on the floor."', 'Someone is on a video call at full volume. Of course.'];
-    return { x: 0, z: -9.6, y: 0, yaw: 0 };
-  }
-  function buyToken() {
-    if (!game.wallet.spend(20, `Metro token (${V.name})`)) return ui.toast('Not enough money', 'A token is ₹20.', 'cash');
-    V.tokens = (V.tokens || 0) + 1; audio.cash && audio.cash();
-    ui.toast('Token bought', 'Tap it at the ticket gates.', 'metro');
-  }
-
   // ---------- Garden City Mega Mall ----------
   const SHOPS = [['ZARO', '#111'], ['H&N', '#c62828'], ['DECATHLAND', '#1565c0'], ['STARBOX COFFEE', '#1b5e20'], ['CHROMA', '#263238'], ['LIFESTYLISH', '#6a1b9a'], ['MAX-ISH', '#e65100'], ['BOOKWORM', '#4e342e']];
   const FOOD = [
@@ -242,11 +178,7 @@ export function createVenues({ world, ui, audio, game, hooks }) {
   }
 
   // ---------- being inside ----------
-  function enter(kind, opts = {}) {
-    const sp = kind === 'mall' ? buildMall() : buildStation(opts.station);
-    V.tokens = V.tokens || 0;
-    return sp;
-  }
+  function enter() { return buildMall(); }
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   function collide(p, r, y = 0) {
     let hit = null;
@@ -288,18 +220,6 @@ export function createVenues({ world, ui, audio, game, hooks }) {
       V.frisk.done = true; audio.chime && audio.chime();
       ui.dialogue(V.frisk.mall ? 'Guard: *beep* "Belt? Keys? Phone? Power bank? Okay, go." (Everything beeps. Nobody checks.)' : 'Security: "Arms up. Bag on the belt. Any sharp objects, liquids, power bank?" A gentle pat-down later: "Okay, saar."');
     }
-    // ticket gates open for a token or a phone QR
-    for (const g of V.gates) {
-      if (g.open > 0) { g.open -= dt; continue; }
-      const lane = Math.abs(W.pos.x - (g.x1 + g.x2) / 2) < 0.9 && Math.abs(W.y - g.y0) < 1;
-      // going out (from the platform side) is free
-      if (lane && W.pos.z > g.z2 && W.pos.z < g.z2 + 1.1) { g.open = 2; continue; }
-      const near = lane && W.pos.z > g.z1 - 1.1 && W.pos.z < g.z1;
-      if (!near) continue;
-      if (V.tokens > 0) { V.tokens--; g.open = 3; audio.chime && audio.chime(); ui.toast('Gate open', 'Token in. Walk through.', 'metro'); }
-      else if (phone && phone.S && phone.S.tickets > 0) { phone.S.tickets--; g.open = 3; audio.chime && audio.chime(); ui.toast('QR scanned', 'Gate open. Walk through.', 'metro'); }
-      else if (!V.said.has('gate')) { V.said.add('gate'); ui.toast('Gate closed', 'Tap a token (₹20 at the counter or the machines), or scan a QR ticket from your phone.', 'metro'); setTimeout(() => V && V.said.delete('gate'), 6000); }
-    }
     for (const n of V.npcs) {
       const { ch, path } = n;
       if (!path) { ch.animate(dt, 0); continue; }
@@ -318,7 +238,7 @@ export function createVenues({ world, ui, audio, game, hooks }) {
   }
   return {
     scene, enter, collide, groundAt, conveyor, action, update, clampCam, inside: () => false, ladders: [], vidhanaTop: null,
-    get kind() { return V && V.kind; }, get name() { return V && V.name; }, get tokens() { return V ? V.tokens : 0; },
+    get kind() { return V && V.kind; }, get name() { return V && V.name; },
     mall: mall && { name: MALL_NAME, x: mall.x, z: mall.z, nx: mall.nx, nz: mall.nz },
     leave() { V = null; dyn.clear(); },
   };

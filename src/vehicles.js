@@ -1012,7 +1012,8 @@ export function createTraffic(scene, world, audio) {
     return hit;
   }
   function setNight(lights) { lightMat.color.setScalar(0.7 + lights * 3); beamMat.opacity = lights * 0.32; beams.visible = lights > 0.05; }
-  return { update, collidePlayer, setNight, setPeds, overlaps, stats, vehicles };
+  // adopt(): the vehicles already have places (the page's state, handed to the worker): skip the first-frame spawn
+  return { update, collidePlayer, setNight, setPeds, overlaps, stats, vehicles, adopt() { started = true; } };
 }
 
 // ------------------------------------------------------------------ metro trains on the real viaduct

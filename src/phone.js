@@ -296,7 +296,7 @@ export function createPhone({ missions, game, tow, navTo, ui, actions, state, wo
   function metroView() {
     const p = focus(), st = [...world.stations].sort((a, b) => a.ex - b.ex);
     return head('Namma Metro', '#c27be0') + sec('Purple Line', `<div class="ph-line">${st.map((s) => `<div class="ph-st"><span class="dot"></span><div><b>${esc(s.name)}</b><div class="ph-m">${km(dist(p, { x: s.ex, z: s.ez }))}${s.elevated ? ' · elevated' : ' · underground'}</div></div>${routeBtn(s.ex, s.ez, s.name + ' Metro')}</div>`).join('')}</div>`) +
-      sec('QR ticket', `${S.tickets ? `${qr(S.tickets)}<div class="ph-m">${S.tickets} ticket${S.tickets > 1 ? 's' : ''}. Scanned at the gate on your next ride: the token fare comes back.</div>` : '<div class="ph-m">One ride, any station. Skip the token queue.</div>'}${btn(`${icon('qr')} Buy QR ticket · ₹20`, 'ticket', 'go wide')}`);
+      sec('QR ticket', `${S.tickets ? `${qr(S.tickets)}<div class="ph-m">${S.tickets} ticket${S.tickets > 1 ? 's' : ''}. Scanned at the station on your next ride instead of a token.</div>` : '<div class="ph-m">One ride, any station. Skip the token queue.</div>'}${btn(`${icon('qr')} Buy QR ticket · ₹20`, 'ticket', 'go wide')}`);
   }
   function garageView() {
     const hp = Math.round(player.health), V = VEHICLE_STATS[player.type], yard = garage && garage.place ? garage.place : tow.yard;
@@ -403,10 +403,7 @@ export function createPhone({ missions, game, tow, navTo, ui, actions, state, wo
       if (d && d.theme === 'darshini') { S.missions.coffee = 'done'; save(); setTimeout(() => send('coffeeDone'), 3000); }
     }
     seen.inside = inside;
-    // a QR ticket pays for the ride the station just charged a token for
-    const metro = state.mode === 'metro';
-    // (QR tickets are scanned at the station gates, src/venues.js)
-    seen.metro = metro;
+    seen.metro = state.mode === 'metro';
     if (document.body.classList.contains('phonecam') && !state.photo) document.body.classList.remove('phonecam');
     if (open) {
       $('phTime').textContent = clock();
@@ -424,5 +421,6 @@ export function createPhone({ missions, game, tow, navTo, ui, actions, state, wo
     update, openApp, notify, message, get open() { return open; },
     toggle: () => (overlays.has('phone') ? overlays.close('phone') : overlays.open('phone')),
     S, Q,
+    useTicket() { if (S.tickets <= 0) return false; S.tickets--; save(); return true; },
   };
 }

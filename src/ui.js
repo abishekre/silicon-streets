@@ -267,6 +267,8 @@ export function createUI(world, actions, input) {
   const selSpeed = seg('speedSeg', [['0', 'Pause'], ['1', '1×'], ['60', '60×'], ['360', '360×']], (v) => actions.setTimeSpeed(+v));
   const selWx = seg('wxSeg', WEATHER_ORDER.map((k) => [k, `${icon(WEATHERS[k].icon)} ${WEATHERS[k].label}`]), (v) => actions.setWeather(v));
   const selVeh = seg('vehSeg', [['auto', `${icon('auto')} Auto`], ['scooter', `${icon('scooter')} Scooter`], ['car', `${icon('car')} Car`]], (v) => actions.setVehicle(v));
+  const selMouse = seg('mouseSeg', [['look', 'Mouse look'], ['drag', 'Click and drag']], (v) => actions.setMouse({ mode: v }));
+  const selSens = seg('sensSeg', [['0.6', 'Low'], ['1', 'Medium'], ['1.6', 'High'], ['2.4', 'Very high']], (v) => actions.setMouse({ sens: +v }));
   const selCam = seg('camSeg', [['chase', 'Chase'], ['first', 'First person'], ['cine', 'Cinematic']], (v) => actions.setCamera(v));
   $('liveBtn').onclick = () => actions.toggleLive();
   const selQ = seg('qSeg', [['auto', 'Auto'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['ultra', 'Ultra']], (v) => actions.setQuality(v));
@@ -343,7 +345,7 @@ export function createUI(world, actions, input) {
     const q = s.quality;
     selSpeed(s.timeSpeed); selQ(q.mode); $('stats').checked = q.stats; selLive(q.cfg.live); $('gDyn').checked = q.dynRes;
     for (const [id, [key]] of Object.entries(GFX)) $(id).value = String(q.cfg[key]);
-    $('qNow').textContent = q.mode === 'auto' ? `Auto picked ${q.d.label}` : q.mode === 'custom' ? 'Custom settings' : ''; selWx(s.weather); selVeh(s.vehicle); selCam(s.camera);
+    $('qNow').textContent = q.mode === 'auto' ? `Auto picked ${q.d.label}` : q.mode === 'custom' ? 'Custom settings' : ''; selWx(s.weather); selVeh(s.vehicle); selCam(s.camera); selMouse(s.mouse.mode); selSens(String(s.mouse.sens));
     $('liveBtn').classList.toggle('sel', s.live);
     $('liveBtn').textContent = s.live ? 'LIVE: synced to real Bengaluru' : 'Sync to real Bengaluru time + weather';
   }

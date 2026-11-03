@@ -441,7 +441,7 @@ export function createPeople(scene, world) {
     }
     return null;
   }
-  return { update, animateCows, collideCows, cows, peds, alarm };
+  return { update, animateCows, collideCows, cows, peds, alarm, adopt() { started = true; } };
 }
 
 export function createPassengerMesh(scene) {

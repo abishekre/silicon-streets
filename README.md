@@ -66,6 +66,7 @@ python -X utf8 tools/osm2game.py a0.json a1.json ... public/data/map
 | | |
 |---|---|
 | Drive / walk | W A S D or arrows |
+| Look around | move the mouse (click the game once; Esc frees the cursor). Click and drag instead in Settings → Controls |
 | Get out / in · call your vehicle (or mechanic) | F · G |
 | Interact (cafés, carts, metro, jobs) | E |
 | Accept / decline a job | Y / N |

@@ -4,12 +4,13 @@
 // A layer registered with `pass: true` (the phone) only keeps the keys it handles; the rest reach gameplay.
 const PAUSES = new Set(['pause', 'settings', 'map']);
 
-export function createOverlays(state) {
+export function createOverlays(state, onChange) {
   const layers = {}, stack = [];
   const sync = () => {
     state.paused = stack.some((n) => PAUSES.has(n));
     document.body.classList.toggle('paused', state.paused);
     document.body.dataset.overlay = stack[stack.length - 1] || '';
+    onChange && onChange(stack[stack.length - 1] || null);
   };
   const top = () => stack[stack.length - 1] || null;
   function open(name, ...args) {

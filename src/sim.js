@@ -32,6 +32,20 @@ export function packSim(buf, L, meshes, colored, vehicles, peds) {
 }
 
 // page side
+// a copy of a vehicle's or pedestrian's state that can go to the worker: numbers, flags, number arrays and plain
+// objects of those. References into the page's own objects (colours, signals, hash cells, neighbours) stay behind.
+const SKIP_V = new Set(['col', 'hl', 'hk']), SKIP_P = new Set(['sig', 'at', 'risk', 'obs', 'tumble']);
+// (five levels deep at most: anything deeper is a link into shared map data, not state)
+function plain(x, d = 0) {
+  if (x === null || typeof x !== 'object') return typeof x === 'function' ? undefined : x;
+  if (d > 5) return undefined;
+  if (ArrayBuffer.isView(x)) return x.slice();
+  if (Array.isArray(x)) { const a = x.map((y) => plain(y, d + 1)); return a.includes(undefined) ? undefined : a; }
+  if (Object.getPrototypeOf(x) !== Object.prototype) return undefined;
+  const o = {}; for (const k in x) { const v = plain(x[k], d + 1); if (v === undefined) return undefined; o[k] = v; } return o;
+}
+function snap(o, skip) { const out = {}; for (const k in o) if (!skip.has(k)) { const v = plain(o[k]); if (v !== undefined) out[k] = v; } return out; }
+
 export function createSim({ traffic, people, trafficGroup, peopleGroup, ev, audio, flood }) {
   const { meshes, colored } = meshesOf(trafficGroup, peopleGroup);
   const V = traffic.vehicles, P = people.peds;
@@ -86,7 +100,11 @@ export function createSim({ traffic, people, trafficGroup, peopleGroup, ev, audi
   }
   function onMessage(e) {
     const m = e.data;
-    if (m.type === 'simReady') { mode = 'remote'; console.info('[silicon-streets] traffic and people now run in the worker'); }
+    if (m.type === 'simReady') {
+      // hand the worker where everything is now, so traffic carries on instead of jumping to the worker's own start
+      w.postMessage({ type: 'simSync', V: V.map((v) => snap(v, SKIP_V)), P: P.map((p) => snap(p, SKIP_P)) });
+      mode = 'remote'; console.info('[silicon-streets] traffic and people now run in the worker');
+    }
     else if (m.type === 'state') { if (pend) spare = pend.buf.buffer; pend = m; busy = false; }
     else if (m.type === 'simError') { console.warn('[silicon-streets] simulation worker failed, running it here', m.message); mode = 'local'; }
   }

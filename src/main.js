@@ -162,7 +162,8 @@ async function init() {
     player.heading = Math.atan2(s.dx, s.dz); player.park();
   }
 
-  const state = { quality, paused: false, hours: 17.5, timeSpeed: 60, weather: 'clear', live: false, vehicle: 'auto', camera: 'chase', mode: 'drive', photo: false, started: false };
+  const mouse = (() => { try { return { mode: 'look', sens: 1, ...JSON.parse(localStorage.getItem('blr.mouse') || '{}') }; } catch (e) { return { mode: 'look', sens: 1 }; } })();
+  const state = { mouse, quality, paused: false, hours: 17.5, timeSpeed: 60, weather: 'clear', live: false, vehicle: 'auto', camera: 'chase', mode: 'drive', photo: false, started: false };
   const actions = {
     setTime: (h) => { state.hours = h; if (state.live) setLive(false); },
     setTimeSpeed: (s) => { state.timeSpeed = s; if (state.live) setLive(false); ui.sync(state); },
@@ -174,6 +175,7 @@ async function init() {
       ui.toast(VEHICLE_STATS[v].label, v === 'auto' ? 'Namma Auto ride requests on. Meter haaki!' : v === 'scooter' ? 'Swiggly / Zoomato delivery orders on.' : 'Oober trip requests on. Surge at rush hour and in rain.', v); ui.sync(state);
     },
     setCamera: (c) => { state.camera = c; ui.sync(state); },
+    setMouse: (m) => { Object.assign(state.mouse, m); try { localStorage.setItem('blr.mouse', JSON.stringify(state.mouse)); } catch (e) { /* private mode */ } ui.sync(state); },
     toggleLive: () => setLive(!state.live),
     setQuality: (mode) => {
       quality.mode = mode; quality.dyn = 1;
@@ -208,27 +210,21 @@ async function init() {
       scene.add(walker.root); renderPass.scene = scene; state.mode = 'walk'; document.body.classList.remove('inside');
     }),
     rest: (h, e, text) => ui.fade(() => { state.hours = (state.hours + h) % 24; game.wallet.energy = Math.min(100, game.wallet.energy + e); ui.toast(`+${h >= 1 ? h + ' hour' : h * 60 + ' min'}`, text, 'hourglass'); }, 'Time passes…'),
-    // walk-in places bigger than a room (src/venues.js): the metro station and the mall
+    // walk-in places bigger than a room (src/venues.js): the mall
     enterVenue: (kind, opts = {}) => ui.fade(() => {
       W.street = opts.street; const sp = venues.enter(kind, opts); W.venue = true;
       W.pos.set(sp.x, 0, sp.z); W.y = sp.y; W.vy = 0; W.ground = true; W.ladder = W.mantle = null; W.yaw = sp.yaw; camCtl.walkYaw = sp.yaw;
       venues.scene.add(walker.root); renderPass.scene = venues.scene;
       state.mode = 'interior'; document.body.classList.add('inside');
-      ui.setZone({ name: venues.name + (kind === 'metro' ? ' Metro' : ''), kn: kind === 'metro' ? 'ನಮ್ಮ ಮೆಟ್ರೋ' : 'ಮಾಲ್' });
+      ui.setZone({ name: venues.name, kn: 'ಮಾಲ್' });
     }),
     exitVenue: () => ui.fade(() => {
       const s = W.street; venues.leave(); W.venue = false; W.y = 0; W.vy = 0;
       W.pos.set(s.x + s.nx * 1.2, 0, s.z + s.nz * 1.2); W.yaw = Math.atan2(s.nx, s.nz); camCtl.walkYaw = W.yaw;
       scene.add(walker.root); renderPass.scene = scene; state.mode = 'walk'; document.body.classList.remove('inside');
     }),
-    enterStation: (s) => {
-      const nr = world.nearestRoad(s.ex, s.ez, 40), l = nr ? Math.hypot(nr.x - s.ex, nr.z - s.ez) || 1 : 1;
-      hooks.enterVenue('metro', { station: s, street: { x: s.ex, z: s.ez, nx: nr ? (nr.x - s.ex) / l : 0, nz: nr ? (nr.z - s.ez) / l : 1 } });
-    },
-    boardTrain: (from) => ui.menu({
-      title: 'Board the train', kn: 'ನಮ್ಮ ಮೆಟ್ರೋ', foot: 'Purple Line · your token was taken at the gate',
-      items: world.stations.filter((s) => s !== from).map((s) => ({ name: `To ${s.name}`, price: null, desc: 'Stand on the right. Mind the gap.', onPick: () => { venues.leave(); W.venue = false; W.y = 0; scene.add(walker.root); hooks.travel(s, from); } })),
-    }),
+    // a phone QR ticket pays the metro fare (src/phone.js)
+    useTicket: () => phone.useTicket(),
     // a real ride: platform → viaduct/tunnel → arrival, then out onto the street
     travel: (st, from) => ui.fade(() => {
       state.mode = 'metro'; walker.root.visible = false; document.body.classList.add('inside');
@@ -307,7 +303,8 @@ async function init() {
   ui.sync(state);
 
   // ---------- overlays: pause → settings / map, café menus, photo mode ----------
-  const overlays = createOverlays(state);
+  // closing the last layer with a click or key takes the mouse back for mouse look
+  const overlays = createOverlays(state, (top) => (top ? freeMouse() : grabMouse()));
   ui.onClosed = (n) => overlays.close(n, true);
   ui.onOpened = (n) => overlays.open(n);
   const clockText = () => ui.fmtTime(state.hours).replace(/<[^>]+>/g, '');
@@ -370,8 +367,11 @@ async function init() {
   bloom.setSize = (w, h) => bloomSetSize(Math.max(1, Math.round(w * tierCfg().bloomScale)), Math.max(1, Math.round(h * tierCfg().bloomScale)));
   // ambient occlusion: soft contact shadows where walls meet roads, under vehicles and awnings
   const gtao = new GTAOPass(scene, camera, innerWidth, innerHeight);
-  gtao.updateGtaoMaterial({ radius: 3.5, distanceExponent: 1, thickness: 6, scale: 2.6, samples: 16, distanceFallOff: 1 });
-  gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
+  // thickness: how far in front of a surface something still counts as covering it. Large values let a wall's
+  // edge darken the street behind it (and a car behind a pillar darken the pillar), so keep it near object size.
+  // depthPhi: the denoiser only blends neighbours within ~0.5 m of the surface plane, so AO doesn't smear over edges
+  gtao.updateGtaoMaterial({ radius: 2.5, distanceExponent: 1, thickness: 1.2, scale: 2.2, samples: 16, distanceFallOff: 1 });
+  gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 0.5, normalPhi: 6, radius: 4, rings: 2, samples: 12 });
   gtao.blendIntensity = 0.9;
   const gtaoSetSize = gtao.setSize.bind(gtao);
   gtao.setSize = (w, h) => { const s = tierCfg().ao === 'half' ? 0.5 : 1; gtaoSetSize(Math.max(1, Math.round(w * s)), Math.max(1, Math.round(h * s))); };
@@ -549,13 +549,28 @@ async function init() {
     return true;
   }
   const cv = renderer.domElement;
-  cv.addEventListener('pointerdown', (e) => { if (!state.photo && e.pointerType === 'mouse') { camCtl.dragging = true; cv.setPointerCapture(e.pointerId); } });
+  // mouse look, as in most PC games: once the game has the mouse, moving it turns the camera. Esc frees the cursor
+  // (the browser takes that Esc) and pauses; menus, the map and the phone free it too, and a click takes it back.
+  function looking() { return document.pointerLockElement === renderer.domElement; }
+  let freeing = false;
+  function grabMouse() {
+    if (looking() || !state.started || state.photo || overlays.top() || state.mouse.mode !== 'look' || !matchMedia('(pointer: fine)').matches || !renderer.domElement.requestPointerLock) return;
+    try { const p = renderer.domElement.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* not allowed here */ }
+  }
+  function freeMouse() { if (looking()) { freeing = true; document.exitPointerLock(); } }
+  document.addEventListener('pointerlockchange', () => {
+    if (!looking() && !freeing && state.started && !overlays.top()) overlays.open('pause');
+    freeing = false;
+  });
+  cv.addEventListener('pointerdown', (e) => { if (!state.photo && e.pointerType === 'mouse' && !looking()) { camCtl.dragging = true; cv.setPointerCapture(e.pointerId); } });
   cv.addEventListener('pointerup', () => { camCtl.dragging = false; });
   cv.addEventListener('pointermove', (e) => {
-    if (!camCtl.dragging || state.paused) return;
-    if (state.mode === 'drive') camCtl.yaw -= e.movementX * 0.006; else camCtl.walkYaw -= e.movementX * 0.006;
-    camCtl.pitch = clamp(camCtl.pitch + e.movementY * 0.004, -0.5, 1.25); camCtl.idle = 0;
+    if ((!camCtl.dragging && !looking()) || state.paused) return;
+    const k = state.mouse.sens || 1;
+    if (state.mode === 'drive') camCtl.yaw -= e.movementX * 0.006 * k; else camCtl.walkYaw -= e.movementX * 0.006 * k;
+    camCtl.pitch = clamp(camCtl.pitch + e.movementY * 0.004 * k, -0.5, 1.25); camCtl.idle = 0;
   });
+  cv.addEventListener('click', () => grabMouse());
   cv.addEventListener('wheel', (e) => { camCtl.zoom = clamp(camCtl.zoom + Math.sign(e.deltaY) * 0.12, 0.5, 3.2); }, { passive: true });
   if (isTouch) {
     document.body.classList.add('touch');
@@ -683,7 +698,7 @@ async function init() {
   const hasSave = (() => { try { return !!localStorage.getItem('blr.save'); } catch (e) { return false; } })();
   let begun = false;
   function begin(load) {
-    audio.start(); state.started = true; $('start').classList.add('gone'); document.body.classList.add('playing');
+    audio.start(); state.started = true; $('start').classList.add('gone'); document.body.classList.add('playing'); grabMouse();
     if (begun) return; begun = true;
     if (load && loadGame()) setTimeout(() => ui.toast('Welcome back', 'Your saved game is loaded.', 'save'), 600);
     else setTimeout(() => ui.toast('Namaskara!', `You're an auto driver on MG Road. ${K('vehicle')} to get out and walk, ${K('controls')} for controls, <kbd>Esc</kbd> to pause.`, 'auto'), 600);

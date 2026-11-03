@@ -237,7 +237,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
       const consider = (d, a) => { if (!best || d < best.d) best = { d, a }; };
       for (const d of world.doors) { const dd = dist(w, d); if (dd < 2.4) consider(dd, { label: `enter ${d.name}`, run: () => hooks.enterInterior(d) }); }
       for (const v of world.vendors) { const dd = dist(w, v); if (dd < 2.6) { const m = VENDOR_MENUS[v.type]; consider(dd, { label: `buy from the ${m.title.toLowerCase()}`, run: () => menuFor(m.title, m.kn, m.items, 'Street food, Bengaluru prices') }); } }
-      for (const s of world.stations) { const dd = Math.hypot(w.x - s.ex, w.z - s.ez); if (dd < 4) consider(dd, hooks.enterStation ? { label: `go into ${s.name} Metro station`, run: () => hooks.enterStation(s) } : { label: `take Namma Metro from ${s.name}`, run: () => metroMenu(s) }); }
+      for (const s of world.stations) { const dd = Math.hypot(w.x - s.ex, w.z - s.ez); if (dd < 4) consider(dd, { label: `take Namma Metro from ${s.name}`, run: () => metroMenu(s) }); }
       for (const fn of extra) { const a = fn(w, ctx); if (a) consider(a.d, a); }
       if (ride.kind === 'walk') {
         const G = WALK[ride.sub];
@@ -255,9 +255,10 @@ export function createGame(scene, world, people, ui, audio, hooks) {
   function metroMenu(from) {
     const dests = world.stations.filter((s) => s !== from);
     ui.menu({
-      title: `${from.name} Metro`, kn: 'ನಮ್ಮ ಮೆಟ್ರೋ', foot: 'Purple Line · tokens ₹20',
+      title: `${from.name} Metro`, kn: 'ನಮ್ಮ ಮೆಟ್ರೋ', foot: 'Purple Line · tokens ₹20 · a phone QR ticket works too',
       items: dests.map((s) => ({ name: `Ride to ${s.name}`, price: 20, desc: 'Stand on the right. Mind the gap.', onPick: () => {
-        if (!wallet.spend(20, `Metro to ${s.name}`)) { ui.toast('Not enough money', 'A token is ₹20.', 'cash'); return; }
+        if (hooks.useTicket && hooks.useTicket()) ui.toast('QR scanned', 'Your phone ticket opens the gate.', 'metro');
+        else if (!wallet.spend(20, `Metro to ${s.name}`)) { ui.toast('Not enough money', 'A token is ₹20.', 'cash'); return; }
         hooks.travel(s, from);
       } })),
     });
