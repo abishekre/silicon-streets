@@ -115,6 +115,7 @@ async function init() {
   const traffic = createTraffic(scene, world, audio);
   const metro = createMetro(scene, world);
   const people = createPeople(scene, world);
+  traffic.setPeds(people.peds);
   const player = new Player(scene);
   const interior = createInterior();
   const parked = createParked(scene, world);

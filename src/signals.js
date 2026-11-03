@@ -3,7 +3,12 @@ import { box, merge, part, makeRng } from './util.js';
 import { createCharacter } from './people.js';
 
 const MAJOR = new Set(['primary', 'secondary', 'trunk']);
-const GREEN = 13, AMBER = 3, ALLRED = 1.5, CYCLE = (GREEN + AMBER + ALLRED) * 2;
+// one cycle: each axis gets through + left, amber, a protected right-turn arrow, amber, all-red;
+// then a pedestrian phase with every vehicle held, and a last all-red while the crossing clears
+const PHASES = [];
+for (const g of [0, 1]) PHASES.push({ g, k: 'go', d: 12 }, { g, k: 'amber', d: 3 }, { g, k: 'right', d: 6 }, { g, k: 'ramber', d: 2 }, { g, k: 'red', d: 1.5 });
+PHASES.push({ g: -1, k: 'walk', d: 9 }, { g: -1, k: 'red', d: 2 });
+const CYCLE = PHASES.reduce((a, p) => a + p.d, 0);
 
 // Traffic signals at big junctions on the real road graph, and a few traffic police at the busiest ones.
 export function createSignals(scene, world) {
@@ -29,12 +34,30 @@ export function createSignals(scene, world) {
   const group = (s, hd) => { const d = Math.abs(Math.atan2(Math.sin(2 * (hd - s.axis)), Math.cos(2 * (hd - s.axis)))) / 2; return d < Math.PI / 4 ? 0 : 1; };
   let t = 0;
   const phaseOf = (s) => {
-    const c = ((t + s.offset) % CYCLE + CYCLE) % CYCLE, half = GREEN + AMBER + ALLRED;
-    const g = c < half ? 0 : 1, k = c % half;
-    return { g, light: k < GREEN ? 'green' : k < GREEN + AMBER ? 'amber' : 'red' };
+    let c = ((t + s.offset) % CYCLE + CYCLE) % CYCLE;
+    for (const p of PHASES) { if (c < p.d) return p; c -= p.d; }
+    return PHASES[0];
+  };
+  // turn: 'S' straight, 'L' left (free left, except while people cross), 'R' right (permissive on green, protected on the arrow)
+  // returns 'go', 'amber' (stop if you still can) or 'stop'
+  const stateOf = (s, hd, turn = 'S') => {
+    const p = phaseOf(s), mine = group(s, hd) === p.g;
+    if (p.k === 'walk' || (p.g < 0)) return 'stop';
+    if (turn === 'L') return 'go';
+    if (!mine) return 'stop';
+    if (p.k === 'go') return 'go';
+    if (p.k === 'amber') return 'amber';
+    if (turn === 'R') return p.k === 'right' ? 'go' : p.k === 'ramber' ? 'amber' : 'stop';
+    return 'stop';
   };
   for (const s of list) {
-    s.signal = { canGo: (hd) => { const p = phaseOf(s); return group(s, hd) === p.g && p.light === 'green'; } };
+    s.signal = {
+      canGo: (hd, turn) => stateOf(s, hd, turn) === 'go',
+      state: (hd, turn) => stateOf(s, hd, turn),
+      pedGo: () => phaseOf(s).k === 'walk',
+      // seconds of walk time left (people don't start crossing in the last few)
+      pedLeft: () => { let c = ((t + s.offset) % CYCLE + CYCLE) % CYCLE; for (const p of PHASES) { if (c < p.d) return p.k === 'walk' ? p.d - c : 0; c -= p.d; } return 0; },
+    };
     nodes[s.ni].signal = s.signal;
   }
 
@@ -46,10 +69,10 @@ export function createSignals(scene, world) {
     const x = s.x - e.dx * back + e.dz * lat, z = s.z - e.dz * back - e.dx * lat;
     if (world.insideBuilding(x, z, 0.3)) continue;
     const m = new THREE.Matrix4().compose(new THREE.Vector3(x, 0, z), new THREE.Quaternion().setFromAxisAngle(vY, Math.atan2(-e.dx, -e.dz)), new THREE.Vector3(1, 1, 1));
-    const g = merge([part(new THREE.CylinderGeometry(0.08, 0.1, 3.4, 6).translate(0, 1.7, 0), '#2b2b2b'), box(0.38, 1.05, 0.28, 0, 3.6, 0, '#1a1a1a'),
+    const g = merge([part(new THREE.CylinderGeometry(0.08, 0.1, 3.4, 6).translate(0, 1.7, 0), '#2b2b2b'), box(0.38, 1.4, 0.28, 0, 3.43, 0, '#1a1a1a'),
       box(0.03, 3.4, 0.03, 0, 1.7, 0.09, '#f2c230')]);
     g.applyMatrix4(m); poleParts.push(g);
-    for (let k = 0; k < 3; k++) lamps.push({ s, e, k, pos: new THREE.Vector3(0, 3.95 - k * 0.32, 0.15).applyMatrix4(m), hd: Math.atan2(e.dx, e.dz) });
+    for (let k = 0; k < 4; k++) lamps.push({ s, e, k, pos: new THREE.Vector3(0, 3.95 - k * 0.32, 0.15).applyMatrix4(m), hd: Math.atan2(e.dx, e.dz) });
   }
   if (poleParts.length) { const pm = new THREE.Mesh(merge(poleParts), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 })); pm.castShadow = true; scene.add(pm); }
   const lampMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.11, 8, 6), new THREE.MeshBasicMaterial(), Math.max(1, lamps.length));
@@ -79,16 +102,15 @@ export function createSignals(scene, world) {
     if (lampT <= 0) {
       lampT = 0.2;
       lamps.forEach((l, i) => {
-        const p = phaseOf(l.s), mine = group(l.s, l.hd) === p.g;
-        const want = !mine ? 'red' : p.light;
-        c.copy(l.k === 0 ? (want === 'red' ? RED : OFF) : l.k === 1 ? (want === 'amber' ? AMB : OFF) : (want === 'green' ? GRN : OFF));
+        const want = stateOf(l.s, l.hd), arrow = stateOf(l.s, l.hd, 'R');
+        c.copy(l.k === 0 ? (want === 'stop' ? RED : OFF) : l.k === 1 ? (want === 'amber' || (want === 'stop' && arrow === 'amber') ? AMB : OFF) : l.k === 2 ? (want === 'go' ? GRN : OFF) : (arrow === 'go' ? GRN : OFF));
         lampMesh.setColorAt(i, c);
       });
       if (lampMesh.instanceColor) lampMesh.instanceColor.needsUpdate = true;
     }
     // cops turn to wave the moving direction through
     for (const s of cops) {
-      const p = phaseOf(s); s.cop.root.rotation.y = s.axis + (p.g ? Math.PI / 2 : 0);
+      const p = phaseOf(s); if (p.g >= 0) s.cop.root.rotation.y = s.axis + (p.g ? Math.PI / 2 : 0);
       s.cop.parts.armR.rotation.z = -1.4; s.cop.parts.armR.rotation.x = Math.sin(t * 4) * 0.6;
       s.cop.parts.armL.rotation.x = 0;
     }
@@ -101,12 +123,12 @@ export function createSignals(scene, world) {
         const hd = Math.atan2(player.vel.x, player.vel.y);
         if (!s.signal.canGo(hd)) {
           const copNear = cops.some((k) => Math.hypot(k.x - s.x, k.z - s.z) < 5);
-          if (copNear) { wallet.money = Math.max(0, wallet.money - 100); ui.toast('👮 ₹100 fine', 'Traffic police: "Signal jump, saar! Next time licence seize."'); }
-          else ui.toast('🚦 You jumped a red', 'Nobody saw. This time.');
+          if (copNear) { wallet.money = Math.max(0, wallet.money - 100); ui.toast('Fine: ₹100', 'Traffic police: "Signal jump, saar! Next time licence seize."'); }
+          else ui.toast('You jumped a red', 'Nobody saw. This time.');
         }
       }
       last.set(s, inside);
     }
   }
-  return { update, list };
+  return { update, list, phaseOf };
 }

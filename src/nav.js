@@ -1,6 +1,53 @@
 import * as THREE from 'three';
 import { segDist } from './geom.js';
 
+// A* for traffic: route(fromEdge, toNode, out, cost) fills `out` with the edges to drive after fromEdge.
+// Driving only (one-ways respected), no U-turn at the first node. Arrays are reused between calls.
+export function createRouter(graph, maxIter = 5000) {
+  const { nodes, edges } = graph, N = nodes.length;
+  const g = new Float64Array(N), cameE = new Int32Array(N), seen = new Uint32Array(N), shut = new Uint32Array(N);
+  const hf = [], hn = [];
+  let gen = 0;
+  const push = (n, f) => {
+    let i = hf.length; hf.push(f); hn.push(n);
+    while (i > 0) { const p = (i - 1) >> 1; if (hf[p] <= f) break; hf[i] = hf[p]; hn[i] = hn[p]; i = p; }
+    hf[i] = f; hn[i] = n;
+  };
+  const pop = () => {
+    const top = hn[0], lf = hf.pop(), ln = hn.pop(), L = hf.length;
+    if (L) {
+      let i = 0;
+      for (;;) { const l = i * 2 + 1, r = l + 1; let m = -1, mf = lf; if (l < L && hf[l] < mf) { m = l; mf = hf[l]; } if (r < L && hf[r] < mf) m = r; if (m < 0) break; hf[i] = hf[m]; hn[i] = hn[m]; i = m; }
+      hf[i] = lf; hn[i] = ln;
+    }
+    return top;
+  };
+  return function route(fromEdge, goal, out, cost) {
+    out.length = 0;
+    const e0 = edges[fromEdge], start = e0.b;
+    if (start === goal) return true;
+    gen++; hf.length = hn.length = 0;
+    const gx = nodes[goal].x, gz = nodes[goal].z;
+    g[start] = 0; seen[start] = gen; cameE[start] = -1; push(start, Math.hypot(nodes[start].x - gx, nodes[start].z - gz));
+    let iter = 0, found = false;
+    while (hf.length && iter++ < maxIter) {
+      const n = pop(); if (shut[n] === gen) continue; shut[n] = gen;
+      if (n === goal) { found = true; break; }
+      for (const ei of nodes[n].out) {
+        const e = edges[ei], to = e.b;
+        if (n === start && to === e0.a && nodes[n].out.length > 1) continue;
+        const k = cost ? cost(e, ei) : 1; if (k === Infinity) continue;
+        const ng = g[n] + e.len * k;
+        if (seen[to] !== gen || ng < g[to]) { seen[to] = gen; g[to] = ng; cameE[to] = ei; push(to, ng + Math.hypot(nodes[to].x - gx, nodes[to].z - gz)); }
+      }
+    }
+    if (!found) return false;
+    for (let n = goal; n !== start; n = edges[cameE[n]].a) out.push(cameE[n]);
+    out.reverse();
+    return true;
+  };
+}
+
 // Road-network navigation: A* over the OSM graph, glowing arrows on the road, turn-by-turn text.
 export function createNav(scene, world) {
   const { nodes, edges, grid } = world.graph;
