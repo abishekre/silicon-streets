@@ -721,7 +721,8 @@ async function init() {
       game.update(dt, t, ctx(), dh); mark('game');
       // jobs drive the GPS: pickup first, then the drop-off
       const r = game.ride, key = r.state === 'waiting' ? 'p:' + r.from.name : r.state === 'riding' ? 'd:' + r.to.name : '';
-      if (key !== jobKey) { jobKey = key; if (key) navTo({ ...(r.state === 'waiting' ? r.from : r.to), keep: false }); }
+      // keep: the route stays (and reroutes) until the job itself says you're done, even if a shortcut fools the GPS
+      if (key !== jobKey) { if (jobKey && !key) nav.clear(); jobKey = key; if (key) navTo({ ...(r.state === 'waiting' ? r.from : r.to), keep: true }); }
       if (state.mode === 'drive' || state.mode === 'walk') {
         const info = nav.update(dt, f, state.mode === 'drive' ? 'drive' : 'walk');
         if (info && info.arrived) { pinBeam.visible = false; if (info.name === 'Dropped pin') ui.toast('📍 You have arrived', 'That was your pin.'); }

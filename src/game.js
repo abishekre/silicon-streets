@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { createPassengerMesh, createBeam } from './people.js';
+import { createPassengerMesh } from './people.js';
+import { createJobMarker, RING_R } from './marker.js';
 import { emojiTexture, glow } from './textures.js';
 
 const PICKUP_LINES = [
@@ -52,8 +53,7 @@ export const VENDOR_MENUS = {
 
 export function createGame(scene, world, people, ui, audio, hooks) {
   const pmesh = createPassengerMesh(scene); pmesh.visible = false;
-  const pickBeam = createBeam(scene, '#ffd23f'); pickBeam.visible = false;
-  const dropBeam = createBeam(scene, '#3dff8b'); dropBeam.visible = false;
+  const pickBeam = createJobMarker(scene, '#ffd23f', 'Pickup'), dropBeam = createJobMarker(scene, '#3dff8b', 'Drop-off');
   const wallet = { money: 500, energy: 80, respect: 70 };
 
   // ---------- named spots on the real map ----------
@@ -136,7 +136,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
     const G = GIGS[ride.kind];
     ride.state = 'waiting'; ui.offer(null);
     pmesh.position.set(ride.from.x, 0, ride.from.z); pmesh.visible = true;
-    pickBeam.position.set(ride.from.x, 0, ride.from.z); pickBeam.visible = true;
+    pickBeam.show(ride.from.x, ride.from.z);
     ui.toast(`✅ ${ride.app}: ${G.word} accepted`, `${G.delivery ? 'Collect the order at' : 'Pickup at'} <b>${ride.from.name}</b>. Follow the GPS.`, 'ride');
   }
   function declineOffer(expired = false) {
@@ -146,7 +146,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
   }
   function cancel() {
     ride.state = 'cooldown'; ride.timer = 6;
-    pmesh.visible = pickBeam.visible = dropBeam.visible = false;
+    pmesh.visible = false; pickBeam.hide(); dropBeam.hide();
   }
 
   function buy(name, price, energy, desc) {
@@ -164,8 +164,8 @@ export function createGame(scene, world, people, ui, audio, hooks) {
     if (ctx.mode === 'drive') {
       const p = ctx.player.pos;
       const G = GIGS[ride.kind];
-      if (G && ctx.player.type === ride.kind && ride.state === 'waiting' && dist(p, ride.from) < 8) return { label: G.pickLabel, run: () => pickup(ctx) };
-      if (G && ctx.player.type === ride.kind && ride.state === 'riding' && dist(p, ride.to) < 9) return { label: G.dropLabel, run: () => dropoff(ctx) };
+      if (G && ctx.player.type === ride.kind && ride.state === 'waiting' && dist(p, ride.from) < RING_R + 5) return { label: G.pickLabel, run: () => pickup(ctx) };
+      if (G && ctx.player.type === ride.kind && ride.state === 'riding' && dist(p, ride.to) < RING_R + 5) return { label: G.dropLabel, run: () => dropoff(ctx) };
       return null;
     }
     if (ctx.mode === 'interior') {
@@ -210,8 +210,8 @@ export function createGame(scene, world, people, ui, audio, hooks) {
     ride.state = 'riding'; ride.startOdo = p.odometer; ride.rating = 5; ride.quip = 10;
     // deliveries come with a promised time; beat it for a tip
     ride.deadline = G.delivery ? dist(ride.from, ride.to) / 6 + 45 : 0; ride.elapsed = 0;
-    pmesh.visible = pickBeam.visible = false;
-    dropBeam.position.set(ride.to.x, 0, ride.to.z); dropBeam.visible = true;
+    pmesh.visible = false; pickBeam.hide();
+    dropBeam.show(ride.to.x, ride.to.z);
     const line = fmt(pick(G.pickup), ride.to.name).replace('{app}', ride.app);
     ui.dialogue(G.delivery ? `Restaurant: "${line}"` : `${G.who}: "${line}"`);
     if (G.delivery) ui.toast(`🕒 Deliver in ${Math.ceil(ride.deadline / 60)} min`, `To <b>${ride.to.name}</b>. Potholes spill food.`);
@@ -231,7 +231,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
     ui.dialogue(say.includes(':') ? say : `${G.who}: "${say}"`);
     audio.cash();
     // a low reputation means fewer job offers
-    ride.state = 'cooldown'; ride.timer = 5 + (100 - wallet.respect) * 0.4; dropBeam.visible = false;
+    ride.state = 'cooldown'; ride.timer = 5 + (100 - wallet.respect) * 0.4; dropBeam.hide();
   }
 
   function interact(ctx) { const a = nearestAction(ctx); if (a) { a.run(); return true; } return false; }
@@ -247,8 +247,14 @@ export function createGame(scene, world, people, ui, audio, hooks) {
 
   let lowWarned = false;
   function update(dt, t, ctx, gameHoursDelta) {
-    for (const b of [pickBeam, dropBeam]) if (b.visible) { b.children[0].material.opacity = 0.25 + Math.sin(t * 3) * 0.08; b.children[1].scale.setScalar(1 + Math.sin(t * 3) * 0.06); }
+    const here = ctx.mode === 'drive' ? ctx.player.pos : ctx.walker.pos;
+    pickBeam.update(t, here); dropBeam.update(t, here);
     const driving = ctx.mode === 'drive';
+    // stopping inside the ring does the pickup / drop-off, like pressing E
+    const goal = ride.state === 'waiting' ? ride.from : ride.state === 'riding' ? ride.to : null;
+    if (goal && driving && ctx.player.type === ride.kind && dist(ctx.player.pos, goal) < RING_R && Math.abs(ctx.player.speed) < 1.5) {
+      if ((ride.hold = (ride.hold || 0) + dt) > 0.6) { ride.hold = 0; ride.state === 'waiting' ? pickup(ctx) : dropoff(ctx); }
+    } else ride.hold = 0;
     if (ride.state === 'cooldown') { if (driving) { ride.timer -= dt; if (ride.timer <= 0) newRequest(ctx.player.pos, ctx.player.type, ctx); } }
     else if (ride.state === 'offer') { ride.offerT -= dt; ui.offerTick(ride.offerT); if (ride.offerT <= 0 || !driving || ctx.player.type !== ride.kind) declineOffer(ride.offerT <= 0); }
     else if (ctx.mode === 'drive' && ctx.player.type !== ride.kind) { cancel(); ui.toast(`${ride.app} job cancelled`, 'You switched vehicles mid-job.'); }
