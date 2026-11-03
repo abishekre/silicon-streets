@@ -1,0 +1,20 @@
+{
+  "name": "silicon-streets",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "dev:nobuild": "python tools/serve.py 5173",
+    "map": "python tools/osm2game.py"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "0.14.0",
+    "three": "0.170.0"
+  },
+  "devDependencies": {
+    "vite": "5.4.10"
+  }
+}

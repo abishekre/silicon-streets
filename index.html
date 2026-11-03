@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Silicon Streets</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Kannada:wght@500;600;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "@dimforge/rapier3d-compat": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.14.0/rapier.es.js"
+} }
+</script>
+<style>
+  :root { --y: #f2c230; --g: #1f8a42; --ink: #0e1116; --glass: rgba(14, 17, 22, 0.62); --line: rgba(255,255,255,0.12); --txt: #f4f1ea; --mute: #a9b0ba; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0e1116; color: var(--txt); font-family: 'Space Grotesk', system-ui, sans-serif; -webkit-user-select: none; user-select: none; }
+  #app canvas { display: block; }
+  .kn { font-family: 'Noto Sans Kannada', 'Space Grotesk', sans-serif; }
+  kbd { font-family: inherit; font-size: 0.8em; font-weight: 700; padding: 1px 7px; border-radius: 5px; background: var(--y); color: #111; box-shadow: 0 2px 0 #9a7a10; }
+
+  /* start screen */
+  #start { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: radial-gradient(ellipse at 30% 20%, rgba(14,17,22,0.35), rgba(14,17,22,0.88)); transition: opacity .7s, visibility .7s; padding: 16px; }
+  #start.gone { opacity: 0; visibility: hidden; }
+  .startCard { max-width: 640px; width: 100%; }
+  .stripe { height: 10px; border-radius: 5px; background: repeating-linear-gradient(-45deg, var(--y) 0 18px, #111 18px 36px); margin-bottom: 22px; }
+  .startCard h1 { font-size: clamp(40px, 8vw, 76px); line-height: 0.92; margin: 0; letter-spacing: -2px; }
+  .startCard h1 span { color: var(--y); }
+  .startCard .sub { font-size: 22px; margin: 12px 0 4px; color: #fff; }
+  .startCard .sub .kn { color: var(--y); }
+  .startCard p { color: var(--mute); line-height: 1.5; margin: 10px 0; }
+  .keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 6px 18px; margin: 18px 0 24px; font-size: 14px; color: #dfe3e8; }
+  #startBtn { font: 700 18px 'Space Grotesk'; padding: 14px 26px; border-radius: 12px; border: 0; background: var(--y); color: #111; cursor: pointer; box-shadow: 0 5px 0 #9a7a10; transition: transform .1s; }
+  #startBtn:hover { transform: translateY(-2px); }
+  #startBtn:disabled { opacity: .6; cursor: wait; }
+  .note { font-size: 12px !important; opacity: .8; }
+
+  /* HUD */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; opacity: 0; transition: opacity .6s; }
+  body.playing #hud { opacity: 1; }
+  body.photo #hud { opacity: 0 !important; }
+  .panel { background: var(--glass); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid var(--line); border-radius: 14px; }
+  #leftTop { position: absolute; left: 16px; top: 16px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+  #loc { padding: 10px 16px 10px 14px; border-left: 4px solid var(--y); }
+  #walletBox { padding: 7px 12px; display: flex; align-items: center; gap: 10px; font-size: 13px; }
+  #money { font-weight: 700; font-size: 16px; color: #3ddc84; font-variant-numeric: tabular-nums; }
+  .eb { width: 90px; height: 7px; border-radius: 4px; background: rgba(255,255,255,.12); overflow: hidden; }
+  #energyBar { display: block; height: 100%; width: 80%; background: #3ddc84; transition: width .3s; }
+  .el { color: var(--mute); font-size: 11px; letter-spacing: 1px; }
+  #respect { font-size: 12px; font-weight: 700; color: #ffe08a; } #respect.low { color: #ff6b6b; }
+  #speedo .hb { height: 5px; margin-top: 6px; border-radius: 3px; background: rgba(255,255,255,.12); overflow: hidden; } #vhealth { display: block; height: 100%; width: 100%; background: #3ddc84; transition: width .3s; }
+  #menu { position: fixed; z-index: 40; left: 50%; top: 50%; transform: translate(-50%, -46%) scale(.96); width: min(460px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow-y: auto; padding: 18px; background: rgba(14,17,22,.94); border: 1px solid var(--line); border-radius: 18px; opacity: 0; visibility: hidden; transition: all .25s; pointer-events: auto; }
+  #menu.open { opacity: 1; visibility: visible; transform: translate(-50%, -50%) scale(1); }
+  #menu .mh { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+  #menu .mt { font-size: 22px; font-weight: 700; }
+  #menu .mk { color: var(--y); font-size: 15px; }
+  #menu .mx { background: none; border: 0; color: var(--txt); font-size: 26px; cursor: pointer; line-height: 1; }
+  #menu .mi { display: flex; flex-direction: column; gap: 8px; }
+  #menu .mi button { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255,255,255,.05); color: var(--txt); font: 600 15px 'Space Grotesk'; cursor: pointer; }
+  #menu .mi button:hover { border-color: var(--y); background: rgba(242,194,48,.1); }
+  #menu .mi .p { color: #3ddc84; font-weight: 700; }
+  #menu .mi .d { grid-column: 1 / -1; font-weight: 400; font-size: 12.5px; color: #b9c0c8; }
+  #menu .mf { margin-top: 12px; font-size: 12px; color: var(--mute); }
+  #fade { position: fixed; inset: 0; z-index: 45; background: #000; opacity: 0; pointer-events: none; transition: opacity .4s; display: grid; place-items: center; font-size: 22px; font-weight: 700; color: #fff; }
+  #fade.on { opacity: 1; }
+  #perf { position: fixed; z-index: 12; left: 50%; bottom: 16px; transform: translateX(-50%); font: 500 12px/1.5 'Space Grotesk'; background: rgba(0,0,0,.65); color: #cfe; padding: 8px 12px; border-radius: 10px; display: none; pointer-events: none; text-align: center; }
+  #perf.on { display: block; }
+  /* while driving, notifications shrink and move to the top-left so the road stays clear */
+  body.driving #toasts { left: 16px; top: 128px; transform: none; width: min(280px, calc(100vw - 32px)); gap: 6px; }
+  body.driving .toast { padding: 6px 26px 6px 10px !important; border-radius: 10px; background: rgba(14,17,22,.5); }
+  body.driving .toast .t { font-size: 12.5px; }
+  body.driving .toast .b { font-size: 11.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  body.driving #dialogue { bottom: 18px; font-size: 14px; max-width: min(460px, calc(100vw - 380px)); padding: 7px 14px; }
+  #nav { position: absolute; left: 50%; top: 16px; transform: translateX(-50%) translateY(-8px); display: flex; gap: 12px; align-items: center; padding: 8px 16px 8px 12px; background: rgba(16, 95, 60, .92); border-color: rgba(255,255,255,.15); opacity: 0; transition: all .25s; min-width: 260px; }
+  #nav.on { opacity: 1; transform: translateX(-50%); }
+  #nav .na { font-size: 34px; line-height: 1; width: 40px; text-align: center; }
+  #nav .nd { font-size: 20px; font-weight: 700; } #nav .ns { font-size: 13px; } #nav .ne { font-size: 11px; color: #cfe9dc; margin-top: 2px; }
+  #offer { position: absolute; right: 16px; top: 50%; transform: translate(120%, -50%); width: 250px; padding: 12px 14px; border-color: rgba(242,194,48,.55); pointer-events: auto; transition: transform .3s cubic-bezier(.2,.9,.3,1); }
+  #offer.on { transform: translate(0, -50%); }
+  #offer .oh { font-size: 11px; letter-spacing: 1.5px; color: var(--y); font-weight: 700; text-transform: uppercase; }
+  #offer .ot { font-size: 16px; font-weight: 700; margin-top: 4px; } #offer .os { font-size: 12px; color: #cfd5dc; margin-top: 2px; }
+  #offer .obar { height: 4px; background: rgba(255,255,255,.12); border-radius: 2px; margin: 9px 0; overflow: hidden; } #offer .obar span { display: block; height: 100%; background: var(--y); width: 100%; }
+  #offer .ob { display: flex; gap: 6px; } #offer button { flex: 1; font: 700 13px 'Space Grotesk'; padding: 7px; border-radius: 9px; border: 0; cursor: pointer; }
+  #offer .ok { background: #3ddc84; color: #08311b; } #offer .no { background: rgba(255,255,255,.1); color: var(--txt); }
+  #bigmap { position: fixed; inset: 24px; z-index: 42; background: rgba(14,17,22,.96); border: 1px solid var(--line); border-radius: 18px; display: none; grid-template-columns: 1fr 220px; grid-template-rows: auto 1fr; overflow: hidden; }
+  #bigmap.open { display: grid; }
+  #bigmap .bmh { grid-column: 1 / -1; padding: 10px 14px; font-size: 13px; color: var(--mute); display: flex; gap: 8px; align-items: center; }
+  #bigmap .bmh b { color: var(--txt); font-size: 16px; }
+  #bigmapClose { margin-left: auto; background: none; border: 0; color: var(--txt); font-size: 24px; cursor: pointer; }
+  #bigmapCanvas { width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+  #bigmapList { overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; border-left: 1px solid var(--line); }
+  #bigmapList button { text-align: left; font: 600 13px 'Space Grotesk'; color: var(--txt); background: rgba(255,255,255,.05); border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; cursor: pointer; }
+  #bigmapList button:hover { border-color: var(--y); }
+  #bigmapList button small { display: block; font-weight: 400; color: var(--mute); font-size: 11px; }
+  #bigmapSearch { font: 500 14px 'Space Grotesk'; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,.08); color: var(--txt); outline: none; }
+  #bigmapSearch:focus { border-color: var(--y); }
+  #bigmapResults { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1; }
+  #bigmapResults .none { color: var(--mute); font-size: 13px; padding: 8px; }
+  #minimap { pointer-events: auto; cursor: zoom-in; }
+  @media (max-width: 720px) { #bigmap { inset: 8px; grid-template-columns: 1fr; grid-template-rows: auto 1fr 140px; } #bigmapList { border-left: 0; border-top: 1px solid var(--line); } }
+  /* narrow screens: a strict layout so panels never overlap
+     top-left: place + wallet + buttons · top-right: minimap + clock · bottom: speed/meter row, offers and toasts above it */
+  @media (max-width: 720px) {
+    #leftTop { left: 8px; top: 8px; max-width: calc(100vw - 150px); gap: 5px; }
+    #loc { padding: 5px 9px; } #locName { font-size: 13px; line-height: 1.15; } #locKn { font-size: 10.5px; }
+    #walletBox { padding: 4px 8px; gap: 6px; } .eb { width: 46px; } .el { display: none; } #money { font-size: 13px; }
+    #topRight { right: 8px; top: 8px; gap: 5px; } #minimap { order: -1; width: 120px; height: 120px; }
+    #timeBox { padding: 4px 8px; gap: 6px; } #clock { font-size: 14px; } #wx { font-size: 10.5px; } #live, #collectBox { display: none; }
+    #bottomLeft { left: 8px; bottom: 8px; top: auto; gap: 5px; }
+    #bottomLeft .btn { width: 34px; height: 34px; padding: 0; overflow: hidden; white-space: nowrap; text-indent: 9px; font-size: 14px; } #bottomLeft .btn kbd, #fps { display: none; }
+    #help { top: auto; bottom: 50px; left: 8px; right: 8px; min-width: 0; font-size: 11.5px; line-height: 1.7; }
+    #speedo { right: 8px; bottom: 8px; min-width: 0; padding: 5px 10px; } #speed { font-size: 24px; } #speedo .u { font-size: 9px; }
+    #meter { right: 98px; bottom: 8px; padding: 5px 9px; } #meter .lbl, #earned { display: none; } #fare { font-size: 18px; } #rating { font-size: 10px; }
+    #offer { top: auto; bottom: 74px; left: 8px; right: 8px; width: auto; transform: translateY(200%); }
+    #offer.on { transform: none; }
+    #nav { top: auto; bottom: 74px; min-width: 0; width: calc(100vw - 16px); left: 8px; transform: none; padding: 6px 10px; } #nav .na { font-size: 24px; width: 28px; } #nav .nd { font-size: 15px; }
+    #toasts, body.driving #toasts { top: 150px; left: 8px; right: 8px; width: auto; transform: none; }
+    .toast .b { font-size: 11.5px; }
+    #dialogue, body.driving #dialogue { bottom: 140px; max-width: calc(100vw - 16px); font-size: 13px; }
+    #prompt { bottom: 190px; font-size: 13px; }
+    #banner { bottom: 40%; } #banner .n { font-size: 26px; }
+    body.playing #touch.on ~ * #speedo { bottom: 90px; }
+  }
+  body.inside #minimap, body.inside #collectBox { display: none; }
+  #locName { font-size: 20px; font-weight: 700; }
+  #locKn { font-size: 14px; color: var(--y); margin-top: 1px; }
+  #topRight { position: absolute; right: 16px; top: 16px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  #timeBox { padding: 8px 14px; display: flex; align-items: center; gap: 12px; }
+  #clock { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  #clock small { font-size: 12px; color: var(--mute); }
+  #wx { font-size: 14px; color: #dfe3e8; }
+  #live { font-size: 11px; font-weight: 700; letter-spacing: 1px; padding: 2px 7px; border-radius: 6px; background: #333; color: #888; }
+  #live.on { background: #e53935; color: #fff; animation: pulse 1.6s infinite; }
+  @keyframes pulse { 50% { opacity: .55; } }
+  #minimap { width: 200px; height: 200px; border-radius: 14px; border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0,0,0,.35); }
+  #collectBox { padding: 6px 12px; font-size: 13px; color: #dfe3e8; }
+  #collectBox b { color: #ff6ad5; }
+  #banner { position: absolute; left: 0; right: 0; bottom: 22%; text-align: center; opacity: 0; }
+  #banner.show { animation: banner 3.2s ease forwards; }
+  #banner .n { font-size: clamp(30px, 5vw, 54px); font-weight: 700; letter-spacing: -1px; text-shadow: 0 3px 18px rgba(0,0,0,.6); }
+  #banner .kn { font-size: clamp(18px, 2.6vw, 26px); color: var(--y); text-shadow: 0 2px 10px rgba(0,0,0,.7); }
+  @keyframes banner { 0% { opacity: 0; transform: translateY(14px); } 15%, 75% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+  #toasts { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); width: min(420px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 8px; }
+  .toast { pointer-events: auto; cursor: pointer; position: relative; padding-right: 28px !important; background: var(--glass); backdrop-filter: blur(10px); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; animation: tin .35s ease; transition: opacity .5s, transform .5s; }
+  .toast .tx { position: absolute; right: 10px; top: 6px; color: var(--mute); font-size: 16px; }
+  .toast.out { opacity: 0; transform: translateY(-8px); }
+  .toast .t { font-weight: 700; font-size: 15px; }
+  .toast .b { font-size: 13px; color: #cfd5dc; margin-top: 2px; }
+  .toast.ride { border-color: rgba(242,194,48,.6); }
+  .toast.cash { border-color: rgba(61,255,139,.6); }
+  @keyframes tin { from { opacity: 0; transform: translateY(-10px); } }
+  #card { position: absolute; left: 50%; top: 50%; width: min(360px, calc(100vw - 32px)); transform: translate(-50%, -40%) scale(.9); opacity: 0; text-align: center; padding: 22px 22px 18px; background: linear-gradient(160deg, rgba(40,20,50,.92), rgba(14,17,22,.92)); border: 1px solid rgba(255,106,213,.5); border-radius: 18px; transition: all .4s cubic-bezier(.2,1.4,.4,1); }
+  #card.show { opacity: 1; transform: translate(-50%, -50%) scale(1); pointer-events: auto; cursor: pointer; }
+  #card.compact { left: auto; right: 16px; top: 50%; width: 270px; padding: 14px; transform: translate(0, -40%) scale(.92); }
+  #card.compact.show { transform: translate(0, -50%) scale(1); }
+  #card.compact .e { font-size: 34px; } #card.compact .t { font-size: 17px; } #card.compact .b { font-size: 12.5px; }
+  #card .e { font-size: 54px; }
+  #card .k { font-size: 11px; letter-spacing: 2px; color: #ff6ad5; font-weight: 700; margin-top: 4px; }
+  #card .t { font-size: 22px; font-weight: 700; margin-top: 6px; }
+  #card .b { color: #d5d9df; font-size: 14px; margin-top: 6px; line-height: 1.45; }
+  #card .f { font-size: 12px; color: var(--mute); margin-top: 12px; }
+  #dialogue { position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); max-width: min(620px, calc(100vw - 32px)); padding: 10px 18px; font-size: 17px; background: rgba(0,0,0,.6); border-radius: 10px; opacity: 0; transition: opacity .3s; text-align: center; }
+  #dialogue.show { opacity: 1; }
+  #prompt { position: absolute; left: 50%; bottom: 175px; transform: translateX(-50%); font-size: 16px; padding: 8px 16px; opacity: 0; transition: opacity .2s; }
+  #prompt.show { opacity: 1; }
+  #speedo { position: absolute; right: 16px; bottom: 16px; padding: 12px 18px; min-width: 150px; text-align: right; }
+  #speed { font-size: 46px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  #speedo .u { font-size: 12px; color: var(--mute); letter-spacing: 1px; }
+  #vname { font-size: 13px; color: var(--y); font-weight: 700; margin-top: 4px; }
+  #meter { position: absolute; right: 16px; bottom: 120px; padding: 10px 16px; text-align: right; border-color: rgba(242,194,48,.35); }
+  #meter .lbl { font-size: 11px; letter-spacing: 1.5px; color: var(--mute); }
+  #fare { font-size: 28px; font-weight: 700; color: var(--mute); font-variant-numeric: tabular-nums; }
+  #meter.on #fare { color: #ff5252; text-shadow: 0 0 10px rgba(255,82,82,.6); }
+  #rating { color: var(--y); font-size: 13px; letter-spacing: 1px; }
+  #earned { font-size: 12px; color: var(--mute); margin-top: 2px; }
+  #bottomLeft { position: absolute; left: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center; pointer-events: auto; }
+  .btn { pointer-events: auto; cursor: pointer; color: var(--txt); font: 600 13px 'Space Grotesk'; padding: 9px 13px; }
+  .btn:hover { border-color: var(--y); }
+  #fps { font-size: 12px; color: var(--mute); padding: 6px 10px; }
+
+  #help { position: absolute; left: 16px; bottom: 64px; padding: 14px 16px; font-size: 13px; line-height: 1.9; display: none; min-width: 260px; }
+  #help.open { display: block; }
+  #help div { display: flex; justify-content: space-between; gap: 18px; }
+  #help span { color: var(--mute); }
+
+  #settings { position: fixed; z-index: 30; top: 16px; right: 16px; bottom: 16px; width: min(340px, calc(100vw - 32px)); padding: 18px; overflow-y: auto; transform: translateX(calc(100% + 24px)); transition: transform .35s cubic-bezier(.2,.9,.3,1); pointer-events: auto; background: rgba(14,17,22,.88); }
+  #settings.open { transform: none; }
+  #settings h2 { margin: 0 0 4px; font-size: 20px; display: flex; justify-content: space-between; align-items: center; }
+  #settings h3 { font-size: 11px; letter-spacing: 1.8px; color: var(--mute); margin: 18px 0 8px; font-weight: 700; }
+  #closeSettings { background: none; border: 0; color: var(--txt); font-size: 22px; cursor: pointer; }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .seg button, #liveBtn { flex: 1 1 auto; font: 600 13px 'Space Grotesk'; color: var(--txt); background: rgba(255,255,255,.06); border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; cursor: pointer; }
+  .seg button.sel { background: var(--y); color: #111; border-color: var(--y); }
+  #liveBtn { width: 100%; }
+  #liveBtn.sel { background: #e53935; border-color: #e53935; color: #fff; }
+  input[type=range] { width: 100%; accent-color: var(--y); }
+  .row { display: flex; justify-content: space-between; align-items: center; font-size: 14px; padding: 4px 0; }
+  .row input { accent-color: var(--y); width: 18px; height: 18px; }
+  #settings select { font: 600 13px 'Space Grotesk'; color: var(--txt); background: rgba(255,255,255,.06); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; max-width: 58%; }
+  #settings select option { background: #1a1e25; }
+  #gfxAdv { margin-top: 8px; }
+  #gfxAdv summary { cursor: pointer; font-size: 13px; color: var(--mute); padding: 6px 0; }
+  #timeVal { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  /* photo mode */
+  #photo { position: fixed; inset: 0; z-index: 20; pointer-events: none; display: none; }
+  body.photo #photo { display: block; }
+  #photo .frame { position: absolute; inset: 14px; border: 14px solid #fbf7ee; border-bottom-width: 92px; border-radius: 4px; box-shadow: 0 0 0 2000px rgba(0,0,0,.15) inset; }
+  #photo .caption { position: absolute; left: 44px; bottom: 30px; color: #1a1a1a; }
+  #photo .caption .g { font-size: 26px; font-weight: 700; }
+  #photo .caption .g .kn { color: #d4380d; }
+  #photo .caption #pcLoc { font-size: 13px; color: #555; }
+  #photo .actions { position: absolute; right: 44px; bottom: 36px; display: flex; gap: 8px; pointer-events: auto; }
+  #photo .actions button { font: 700 14px 'Space Grotesk'; padding: 10px 16px; border-radius: 10px; border: 0; cursor: pointer; background: #1a1a1a; color: #fff; }
+  #photo .actions button:first-child { background: var(--y); color: #111; }
+  #photo .hint { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); font-size: 13px; background: rgba(0,0,0,.5); padding: 6px 12px; border-radius: 8px; }
+
+  /* touch */
+  #touch { display: none; position: fixed; inset: auto 0 0 0; z-index: 15; pointer-events: none; padding: 16px; justify-content: space-between; align-items: flex-end; }
+  #touch.on { display: flex; }
+  #touch .grp { display: flex; gap: 10px; pointer-events: auto; }
+  #touch button { width: 64px; height: 64px; border-radius: 50%; border: 1px solid var(--line); background: var(--glass); color: #fff; font: 700 20px 'Space Grotesk'; touch-action: none; }
+  #touch button.big { width: 74px; height: 74px; background: rgba(242,194,48,.85); color: #111; }
+  #touch .col { flex-direction: column; align-items: flex-end; }
+  #touch .small button { width: 46px; height: 46px; font-size: 16px; }
+  body.photo #touch { display: none; }
+  #loading { margin-top: 14px; color: var(--mute); font-size: 14px; }
+
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud">
+  <div id="leftTop">
+    <div id="loc" class="panel"><div id="locName">MG Road</div><div id="locKn" class="kn">ಮಹಾತ್ಮ ಗಾಂಧಿ ರಸ್ತೆ</div></div>
+    <div id="walletBox" class="panel"><span id="money">₹500</span><span id="respect" title="Respect: drive clean to earn it back">🙏 70</span><span class="eb"><span id="energyBar"></span></span><span class="el">energy</span></div>
+  </div>
+  <div id="topRight">
+    <div id="timeBox" class="panel"><div id="clock">5:30 PM</div><div id="wx">☀️ Clear</div><div id="live">LIVE</div></div>
+    <canvas id="minimap" width="300" height="300"></canvas>
+    <div id="collectBox" class="panel">✨ Peak Bengaluru <b id="collect">0/7</b></div>
+  </div>
+  <div id="toasts"></div>
+  <div id="nav" class="panel"></div>
+  <div id="offer" class="panel"></div>
+  <div id="banner"></div>
+  <div id="card"></div>
+  <div id="dialogue"></div>
+  <div id="prompt" class="panel"></div>
+  <div id="meter" class="panel"><div class="lbl">METER</div><div id="fare">₹0</div><div id="rating">★★★★★</div><div id="earned">₹0 · 0 rides</div></div>
+  <div id="speedo" class="panel"><div id="speed">0</div><div class="u">KM/H</div><div id="vname">Auto</div><div class="hb" title="Vehicle health"><span id="vhealth"></span></div></div>
+  <div id="bottomLeft">
+    <button id="helpBtn" class="panel btn">⌨️ Controls <kbd>I</kbd></button>
+    <button id="gear" class="panel btn">⚙️ Settings <kbd>Tab</kbd></button>
+    <div id="fps" class="panel">-- fps</div>
+  </div>
+  <div id="help" class="panel">
+    <div>Drive / walk <span>W A S D / arrows</span></div>
+    <div>Run (on foot) <span>Shift</span></div>
+    <div>Jump · climb ledges &amp; ladders (on foot) <span>Space · push into it / W</span></div>
+    <div>Get out / get in <span>F</span></div>
+    <div>Call your vehicle · roadside mechanic <span>G</span></div>
+    <div>Radio (in a vehicle) <span>K</span></div>
+    <div>Interact (cafés, carts, metro, rides) <span>E</span></div>
+    <div>Handbrake / drift <span>Space</span></div>
+    <div>Horn <span>H</span></div>
+    <div>Look around / look up <span>drag mouse · scroll zoom</span></div>
+    <div>Switch vehicle <span>V</span></div>
+    <div>Camera mode <span>C</span></div>
+    <div>Photo mode <span>P</span></div>
+    <div>Time speed <span>T</span></div>
+    <div>Weather <span>R</span></div>
+    <div>Live Bengaluru sync <span>L</span></div>
+    <div>Map · drop a pin for directions <span>M</span></div>
+    <div>Mute <span>U</span></div>
+    <div>Dismiss notifications <span>X</span></div>
+    <div>Accept / decline a job <span>Y / N</span></div>
+  </div>
+</div>
+
+<div id="settings" class="panel">
+  <h2>Settings <button id="closeSettings" aria-label="Close">×</button></h2>
+  <h3>TIME OF DAY</h3>
+  <div class="row"><span>Time</span><span id="timeVal">5:30 PM</span></div>
+  <input id="timeSlider" type="range" min="0" max="23.99" step="0.01" value="17.5">
+  <h3>TIME SPEED</h3><div id="speedSeg" class="seg"></div>
+  <h3>WEATHER</h3><div id="wxSeg" class="seg"></div>
+  <h3>REAL WORLD</h3><button id="liveBtn">Sync to real Bengaluru time + weather</button>
+  <h3>VEHICLE</h3><div id="vehSeg" class="seg"></div>
+  <h3>CAMERA</h3><div id="camSeg" class="seg"></div>
+  <h3>QUALITY</h3>
+  <div id="qSeg" class="seg"></div>
+  <div id="qNow" class="row" style="color:var(--mute);font-size:12px"></div>
+  <details id="gfxAdv"><summary>Advanced graphics</summary>
+    <div class="row"><span>Render resolution</span><select id="gRes"></select></div>
+    <label class="row">Dynamic resolution (holds 60 fps) <input id="gDyn" type="checkbox"></label>
+    <div class="row"><span>Shadows</span><select id="gShadows"></select></div>
+    <div class="row"><span>Ambient occlusion</span><select id="gAO"></select></div>
+    <div class="row"><span>Bloom / glow</span><select id="gBloom"></select></div>
+    <div class="row"><span>Anti-aliasing</span><select id="gAA"></select></div>
+    <div class="row"><span>View distance</span><select id="gView"></select></div>
+    <div class="row"><span>Rain particles</span><select id="gRain"></select></div>
+  </details>
+  <h3>LIVELINESS</h3><div id="liveSeg" class="seg"></div>
+  <div class="row" style="color:var(--mute);font-size:12px">How many vehicles and people fill the streets.</div>
+  <label class="row">Show performance stats <kbd>F3</kbd> <input id="stats" type="checkbox"></label>
+</div>
+
+<div id="menu"></div>
+<div id="perf"></div>
+<div id="bigmap"><div class="bmh"><b>Map</b> · click anywhere to drop a pin and get directions · drag to pan · scroll to zoom · right-click clears <button id="bigmapClose">×</button></div><canvas id="bigmapCanvas"></canvas><div id="bigmapList"><input id="bigmapSearch" type="search" placeholder="🔍 Search places, roads, cafés…" autocomplete="off"><div id="bigmapResults"></div><button id="bigmapClear">✖ Clear route</button></div></div>
+<div id="fade"></div>
+<div id="photo">
+  <div class="frame"></div>
+  <div class="hint">Drag to orbit · scroll to zoom · <kbd>P</kbd> to exit</div>
+  <div class="caption"><div class="g">Greetings from <span class="kn">ನಮ್ಮ ಬೆಂಗಳೂರು</span></div><div id="pcLoc"></div></div>
+  <div class="actions"><button id="savePhoto">Save postcard</button><button id="exitPhoto">Exit</button></div>
+</div>
+
+<div id="touch">
+  <div class="grp"><button data-k="l">◀</button><button data-k="r">▶</button></div>
+  <div class="grp col"><div class="grp small"><button data-k="h">📢</button><button data-k="f">F</button><button data-k="e">E</button><button data-k="v">⚙</button></div><div class="grp"><button data-k="b">▼</button><button data-k="g" class="big">▲</button></div></div>
+</div>
+
+<div id="start">
+  <div class="startCard">
+    <div class="stripe"></div>
+    <h1 id="gameTitle">Silicon<br><span>Streets</span></h1>
+    <div class="sub">Roam <span class="kn">ನಮ್ಮ ಬೆಂಗಳೂರು</span> in an auto.</div>
+    <p>Real streets of central Bengaluru from OpenStreetMap: MG Road, Church Street, Cubbon Park, Vidhana Soudha, Chinnaswamy. Pick up passengers, get out and walk into cafés, grab an elaneer, take the metro, and catch the 4 PM rain.</p>
+    <div class="keys">
+      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drive / walk</div>
+      <div><kbd>F</kbd> get out / get in</div>
+      <div><kbd>H</kbd> horn (mandatory)</div>
+      <div><kbd>E</kbd> interact</div>
+      <div><kbd>V</kbd> auto / scooter / car</div>
+      <div><kbd>P</kbd> postcard photo</div>
+      <div><kbd>R</kbd> weather · <kbd>T</kbd> time</div>
+      <div><kbd>Tab</kbd> settings</div>
+    </div>
+    <button id="startBtn" disabled>Building Bengaluru…</button>
+    <div id="loading"></div>
+    <p class="note">Mockup. Streets, buildings and café names: © OpenStreetMap contributors (ODbL). Building heights are estimated where OSM has none. Other shop names are parodies.</p>
+  </div>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
