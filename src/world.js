@@ -1196,7 +1196,7 @@ export function buildWorld(scene, data, opts = {}) {
     get streamInfo() { return { live: streamed.filter((c) => c.live).length, total: streamed.length, queued: queue.length, buildMs, finMs }; },
     collide, solidAt, surfaceAt, zoneAt, update, nearestRoad, insideBuilding, addPoly, addCircle, segGrid, nodes, junctionR, groundAt, inside, ladders, vidhanaTop,
     potholes, buildings, roads, parks, cubbon, vidhana, stadium, ubc, stations: kiosks, doors, vendors, benches, tracks,
-    graph: { nodes: gNodes, edges: gEdges, grid: edgeGrid }, materials: M, bounds: BOUNDS,
+    graph: { nodes: gNodes, edges: gEdges, grid: edgeGrid }, lamps: lampsAll, materials: M, bounds: BOUNDS,
     // inside the playable area, at least m metres from its edge (for placing things: dogs, hustles, fuel stations…)
     inMap: (x, z, m = 0) => x > BOUNDS.x1 + m && x < BOUNDS.x2 - m && z > BOUNDS.z1 + m && z < BOUNDS.z2 - m,
   };

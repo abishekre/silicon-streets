@@ -79,6 +79,8 @@ export function createAudio() {
     s.connect(f); f.connect(g); g.connect(out); s.start(t); s.stop(t + dur + 0.05);
   }
   function thunder(delay) { via('ambience', () => { noiseBurst(3.5, 160, 0.7, delay); noiseBurst(1.2, 400, 0.25, delay + 0.1); }); }
+  // dhol and thamate for processions: a deep thump and a slap, v = loudness by distance
+  function drum(v = 1) { via('ambience', () => { tone([70], 0.16, 'sine', 0.5 * v); noiseBurst(0.06, 1800, 0.18 * v, 0.12, 'bandpass'); }); }
   function bump(v = 1) { tone([55], 0.18, 'sine', 0.35 * v); noiseBurst(0.2, 500, 0.25 * v); }
   function crash(v = 1) { noiseBurst(0.45, 900, 0.5 * v); tone([70], 0.3, 'sine', 0.3 * v); }
   function chime() { tone([880], 0.14, 'sine', 0.12); tone([1320], 0.22, 'sine', 0.12, 0, 0.12); }
@@ -156,5 +158,5 @@ export function createAudio() {
     const g = b === 'master' ? master : bus[b]; if (g && !(b === 'master' && muted)) g.gain.setTargetAtTime(v, ctx.currentTime, 0.05);
   }
 
-  return { setVolume, get volume() { return { ...vol }; }, alarm, koel, bark, bell, cheer, firework, setCrowd, setStation, radioTick, get station() { return STATIONS[station]; }, start, horn, hornAt, thunder, bump, crash, chime, cash, moo, update, toggleMute, get muted() { return muted; } };
+  return { setVolume, get volume() { return { ...vol }; }, alarm, koel, bark, bell, cheer, firework, drum, setCrowd, setStation, radioTick, get station() { return STATIONS[station]; }, start, horn, hornAt, thunder, bump, crash, chime, cash, moo, update, toggleMute, get muted() { return muted; } };
 }
