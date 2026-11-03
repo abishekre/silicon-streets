@@ -8,13 +8,16 @@
     "build": "vite build",
     "preview": "vite preview",
     "dev:nobuild": "python tools/serve.py 5173",
-    "map": "python tools/osm2game.py"
+    "map": "python tools/osm2game.py",
+    "test": "node --test tests/",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.14.0",
     "three": "0.186.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.1",
     "vite": "5.4.10"
   }
 }
