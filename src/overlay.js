@@ -1,6 +1,7 @@
-// Overlay stack: pause | settings | map | menu | photo (| phone, later). Every keydown goes through key() first.
+// Overlay stack: pause | settings | map | menu | photo | phone. Every keydown goes through key() first.
 // Esc closes the top layer; Esc with nothing open shows the pause menu. state.paused is true while pause, settings
 // or map is open: tick() then skips the simulation and the clock, and the world is dimmed and blurred behind.
+// A layer registered with `pass: true` (the phone) only keeps the keys it handles; the rest reach gameplay.
 const PAUSES = new Set(['pause', 'settings', 'map']);
 
 export function createOverlays(state) {
@@ -29,8 +30,8 @@ export function createOverlays(state) {
       return false;
     }
     if (layers[t].key && layers[t].key(e)) return true;
-    if (e.code === 'Escape') { e.preventDefault(); close(t); }
-    return true; // an open layer swallows everything else
+    if (e.code === 'Escape') { e.preventDefault(); close(t); return true; }
+    return !layers[t].pass; // an open layer swallows everything else
   }
   return {
     register: (name, l) => { layers[name] = l; }, open, close, key, top,

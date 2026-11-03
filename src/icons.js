@@ -96,6 +96,10 @@ export const ICONS = {
   keyboard: ['M2 6h20v12H2z', 'M6 10v.01', 'M10 10v.01', 'M14 10v.01', 'M18 10v.01', 'M7 14h10'],
   eye: ['M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z', c(12, 12, 3)],
   reset: ['M4 12a8 8 0 1 0 2.3-5.7', 'M4 3v4h4'],
+  apps: ['M4 4h6v6H4z', 'M14 4h6v6h-6z', 'M4 14h6v6H4z', 'M14 14h6v6h-6z'],
+  qr: ['M3 3h7v7H3z', 'M14 3h7v7h-7z', 'M3 14h7v7H3z', 'M6 6.5v.01', 'M17 6.5v.01', 'M6 17.5v.01', 'M14 14h3v3', 'M21 14v.01', 'M14 21h3', 'M20 17v4'],
+  image: ['M3 5h18v14H3z', c(9, 10, 2), 'M21 16l-5-5-9 8'],
+  trash: ['M4 7h16', 'M10 11v6', 'M14 11v6', 'M6 7l1 13h10l1-13', 'M9 7V4h6v3'],
 };
 
 // inline <svg> that takes the text colour; `fill` fills the shape (e.g. a gold star)

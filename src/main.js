@@ -34,6 +34,7 @@ import { createDogs } from './dogs.js';
 import { gpuInfo, createGpuTimer, instrumentPasses, createBenchmark } from './perf.js';
 import { createInput } from './input.js';
 import { createOverlays } from './overlay.js';
+import { createPhone } from './phone.js';
 import { damp, clamp, angleLerp } from './util.js';
 import { icon } from './icons.js';
 
@@ -455,10 +456,11 @@ async function init() {
     player.pos.set(nr.x + nr.dz * o * side, 0, nr.z - nr.dx * o * side); player.heading = Math.atan2(nr.dx * side, nr.dz * side); player.park();
     ui.toast(`${VEHICLE_STATS[player.type].label} called`, `It is waiting by the road. Walk over and press ${K('vehicle')}.`, 'phone');
   }
-  // every key goes through the overlay stack first (pause, settings, map, menu, photo); only gameplay keys reach the keymap
+  // every key goes through the overlay stack first (pause, settings, map, menu, photo, phone); only gameplay keys reach
+  // the keymap. The phone lets them through, so you can keep driving with it open.
   addEventListener('keydown', (e) => {
     if (overlays.key(e)) return;
-    if (e.code === 'Tab') { e.preventDefault(); return; } // free: reserved for the in-game phone
+    if (e.code === 'Tab') e.preventDefault(); // the phone's default key: never move browser focus
     if (!state.started) return;
     if (/^F\d+$/.test(e.code) && input.actionsFor(e.code).length) e.preventDefault();
     if (state.mode === 'metro') { if (!e.repeat && input.is(e.code, 'camera')) ride.toggleView(); else if (!e.repeat && input.is(e.code, 'interact')) ride.skip(); return; }
@@ -485,16 +487,19 @@ async function init() {
     accept: () => game.acceptOffer(),
     decline: () => game.declineOffer(),
     stats: () => actions.toggleStats(),
+    phone: () => phone.toggle(),
   };
+  // the phone is the one layer that doesn't take the controls away
+  const free = () => !overlays.top() || overlays.top() === 'phone';
   function handlePresses() {
-    if (state.started && !state.paused && !overlays.top() && state.mode !== 'metro') for (const a in ONE) if (input.pressed(a)) ONE[a]();
+    if (state.started && !state.paused && free() && state.mode !== 'metro') for (const a in ONE) if (input.pressed(a)) ONE[a]();
     input.flush();
   }
   // gamepad: Start pauses, B backs out of a layer, A clicks the focused button, the d-pad walks menus
   const esc = { code: 'Escape', preventDefault() {} };
   function padButton(i) {
     if (i === 9) { if (state.started) overlays.key(esc); return true; }
-    if (!overlays.top()) return false;
+    if (!overlays.top() || (overlays.top() === 'phone' && i !== 1)) return false;
     if (i === 1) overlays.key(esc);
     else if (i === 0) document.activeElement && document.activeElement.click && document.activeElement.click();
     else if (i === 12 || i === 13) overlays.key({ code: i === 12 ? 'ArrowUp' : 'ArrowDown', preventDefault() {} });
@@ -511,14 +516,14 @@ async function init() {
   cv.addEventListener('wheel', (e) => { camCtl.zoom = clamp(camCtl.zoom + Math.sign(e.deltaY) * 0.12, 0.5, 3.2); }, { passive: true });
   if (isTouch) {
     document.body.classList.add('touch');
-    const TAP = { h: () => ONE.horn(), e: () => (state.mode === 'metro' ? ride.skip() : ONE.interact()), f: () => ONE.vehicle(), call: () => summon(), map: () => openMap(), pause: () => overlays.open('pause') };
+    const TAP = { h: () => ONE.horn(), e: () => (state.mode === 'metro' ? ride.skip() : ONE.interact()), f: () => ONE.vehicle(), call: () => summon(), map: () => openMap(), pause: () => overlays.open('pause'), phone: () => phone.toggle() };
     for (const b of document.querySelectorAll('#touch [data-k]')) {
       const k = b.dataset.k; b.innerHTML = icon(b.dataset.i);
       const set = (v) => (e) => { e.preventDefault(); if (k in touch) touch[k] = v; else if (v && state.started) TAP[k](); };
       b.addEventListener('pointerdown', set(true)); b.addEventListener('pointerup', set(false)); b.addEventListener('pointerleave', set(false));
     }
   }
-  const active = () => state.started && !state.photo && !state.paused && !overlays.top();
+  const active = () => state.started && !state.photo && !state.paused && free();
   function readInput() {
     const p = input.pad;
     const kf = (input.down('forward') || touch.up ? 1 : 0) - (input.down('back') || touch.dn ? 1 : 0);
@@ -616,6 +621,10 @@ async function init() {
     x.fillStyle = '#555'; x.font = '500 26px "Space Grotesk"'; x.fillText($('pcLoc').textContent + '  ·  ' + GAME.title, 40, H + 140);
     const a = document.createElement('a'); a.download = 'silicon-streets-postcard.png'; a.href = c.toDataURL('image/png'); a.click();
   };
+
+  // ---------- phone (Tab): gig apps, maps, camera, messages, NammaPay, metro, garage ----------
+  // garage: Phase A's createGarage() result goes here once it exists
+  const phone = createPhone({ game, tow, navTo, ui, actions, state, world, input, overlays, garage, player, walker: W, weather, renderer, composer, camera, orbit: () => orbit, openMap, home: { x: player.pos.x, z: player.pos.z } });
 
   // ---------- start ----------
   $('loading').remove();
@@ -872,6 +881,7 @@ async function init() {
         ui.nav(info && !info.arrived ? info : null);
       } else ui.nav(null);
     }
+    phone.update(dt, dh, rawDt);
     interior.update(dt, atm.hor);
     weather.update(dt, t, camera.position, atm, audio);
     // smoke from a damaged engine; respect slowly returns with clean driving
@@ -930,7 +940,7 @@ async function init() {
   console.info(`[silicon-streets] shaders ready in ${Math.round(performance.now() - tc)} ms`);
   frame();
   // debug handle for automated checks: __game.step(n) advances n frames synchronously
-  window.__game = { garage, dogs, sim, state, player, world, actions, weather, camera, keys: input.held, input, overlays, ui, life, audio, renderer, game, W, hooks, traffic, prof, scene, composer, sun, bloom, gtao, quality, get phys() { return phys; }, flood, edges, nav, people, signals, camCtl, tow, step: (n = 1, dt = 1 / 30) => { for (let i = 0; i < n; i++) tick(dt); } };
+  window.__game = { phone, garage, dogs, sim, state, player, world, actions, weather, camera, keys: input.held, input, overlays, ui, life, audio, renderer, game, W, hooks, traffic, prof, scene, composer, sun, bloom, gtao, quality, get phys() { return phys; }, flood, edges, nav, people, signals, camCtl, tow, step: (n = 1, dt = 1 / 30) => { for (let i = 0; i < n; i++) tick(dt); } };
 }
 
 init().catch((e) => {
