@@ -117,4 +117,15 @@ Not done yet, with the reason:
 - **People LOD.** People are 7 draw calls and about 80k triangles. The remaining cost is per pixel, not per triangle.
 - **Baked AO.** Building walls already darken towards the ground through vertex colours, and GTAO is only on by default on Ultra.
 - **Two-cascade shadows and the static shadow cache.** Shadows are now 1–5 ms. Revisit if a dedicated-GPU benchmark shows them dominating.
-- **Step 4 (workers).** The simulation is about 2.5–3.5 ms of main-thread time and sending draw commands is about 5 ms. This is worth doing for weaker CPUs, but it means reworking how physics, traffic, people, jobs and the tow truck talk to each other.
+
+- **Step 4 (done):**
+  - **Map chunks build in a worker** (`src/world-worker.js`). It runs the same world builder with the same seeds and transfers the vertex arrays back.
+    - The worst main-thread frame after a teleport went from about 500 ms to 38–145 ms.
+    - Finishing a streamed chunk on the page takes 2.6 ms typically, 21 ms at worst (the buffer upload).
+  - **Traffic and people run in the same worker** (`src/sim.js`).
+    - The page keeps mirror objects. Each frame it gets one packed buffer back (instance matrices plus per-vehicle and per-person state) and sends what only it knows: you, the tow truck, physics knocks and tumbles, and flood depths.
+    - Traffic plus people on the main thread: about 1.1–2.3 ms → about 0.5 ms.
+    - It is checked in both builds: knock-downs, car knocks and overlaps (0) work.
+  - **Shaders compile in parallel at startup** with `compileAsync`.
+  - **Fallbacks.** If workers aren't available, everything runs on the page as before. The page simulates for the first few seconds, until the worker has its own copy of the map ready, then hands over once (usually while the title screen is up).
+- **Not in step 4:** physics stays on the page, because your vehicle's handling needs it in the same frame. A fixed-step simulation with interpolation is also left out: it would touch every moving object, for a small gain over the current capped `dt`.

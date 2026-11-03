@@ -28,6 +28,7 @@ import { createBeam } from './people.js';
 import { createAudio } from './audio.js';
 import { createUI } from './ui.js';
 import { loadMap } from './map-data.js';
+import { createSim } from './sim.js';
 import { gpuInfo, createGpuTimer, instrumentPasses, createBenchmark } from './perf.js';
 import { createInput } from './input.js';
 import { createOverlays } from './overlay.js';
@@ -127,9 +128,11 @@ async function init() {
   const audio = createAudio();
   const world = buildWorld(scene, data);
   const weather = createWeather(scene);
-  const traffic = createTraffic(scene, world, audio);
+  // traffic and people get their own groups: the simulation worker sends back matrices for these meshes in this order
+  const trafficGroup = new THREE.Group(), peopleGroup = new THREE.Group(); scene.add(trafficGroup, peopleGroup);
+  const traffic = createTraffic(trafficGroup, world, audio);
   const metro = createMetro(scene, world);
-  const people = createPeople(scene, world);
+  const people = createPeople(peopleGroup, world);
   traffic.setPeds(people.peds);
   const player = new Player(scene);
   const interior = createInterior();
@@ -570,6 +573,7 @@ async function init() {
     pedestrian() { if (once('ped', 6)) ui.toast('"Oi! Nodkond hogi!"', 'Watch where you\'re going.', 'walk'); },
     honked() { if (once('honk', 7)) ui.toast('Honk honk!', '"Move aagi, anna! Signal green aagide!"', 'horn'); },
   };
+  const sim = createSim({ traffic, people, trafficGroup, peopleGroup, ev, audio, flood });
   // Rapier loads in the background (a 2 MB WebAssembly module); until then the simple collisions are used
   let phys = null;
   import('./physics.js').then((m) => m.createPhysics(scene, world)).then((p) => { phys = p; console.info('[silicon-streets] physics ready'); })
@@ -840,9 +844,9 @@ async function init() {
       const focus = { x: f.x, z: f.z, blockers, density, live: LIVE[tierCfg().live] || LIVE.normal, fx: cdir.x, fz: cdir.z, drag: (x, z) => 1 - Math.min(0.7, flood.depthAt(x, z) * 2.2) };
       mark('player');
       signals.update(dt, state.mode === 'drive' ? player : null, ui, game.wallet);
-      traffic.update(dt, focus, ev); mark('traffic');
+      sim.step(dt, t, focus, ws.rain); mark('traffic'); // traffic + people: in the worker when it's running, else here
       tow.update(dt, { player, mode: state.mode, blockedBehind: blockers[0].hits || 0, wallet: game.wallet, navTo, traffic, walker: state.mode === 'walk' ? W.pos : null });
-      metro.update(dt); people.update(dt, t, focus, ws.rain, ev); mark('people');
+      metro.update(dt); mark('people');
       game.update(dt, t, ctx(), dh); mark('game');
       // jobs drive the GPS: pickup first, then the drop-off
       const r = game.ride, key = r.state === 'waiting' ? 'p:' + r.from.name : r.state === 'riding' ? 'd:' + r.to.name : '';
@@ -902,13 +906,16 @@ async function init() {
   const tp = performance.now();
   world.prime(player.pos.x, player.pos.z, tierCfg().far); // you start next to your vehicle (built here: quicker than waiting)
   // from then on chunks are built by the worker as you move, once it has its copy of the map ready
-  mapWorker.then((w) => w && world.useWorker(w));
+  mapWorker.then((w) => { if (w) { world.useWorker(w); sim.attach(w); } });
   console.info(`[silicon-streets] ${world.streamInfo.live}/${world.streamInfo.total} chunks built at start in ${Math.round(performance.now() - tp)} ms`);
-  // compile every shader up front so the first headlight / rain / interior doesn't stutter
-  renderer.compile(scene, camera);
+  // compile every shader up front so the first headlight / rain / interior doesn't stutter; in parallel where the
+  // driver can (KHR_parallel_shader_compile), so the loading screen doesn't freeze while it happens
+  const tc = performance.now();
+  await renderer.compileAsync(scene, camera).catch(() => renderer.compile(scene, camera));
+  console.info(`[silicon-streets] shaders ready in ${Math.round(performance.now() - tc)} ms`);
   frame();
   // debug handle for automated checks: __game.step(n) advances n frames synchronously
-  window.__game = { state, player, world, actions, weather, camera, keys: input.held, input, overlays, ui, life, audio, renderer, game, W, hooks, traffic, prof, scene, composer, sun, bloom, gtao, quality, get phys() { return phys; }, flood, edges, nav, people, signals, camCtl, tow, step: (n = 1, dt = 1 / 30) => { for (let i = 0; i < n; i++) tick(dt); } };
+  window.__game = { sim, state, player, world, actions, weather, camera, keys: input.held, input, overlays, ui, life, audio, renderer, game, W, hooks, traffic, prof, scene, composer, sun, bloom, gtao, quality, get phys() { return phys; }, flood, edges, nav, people, signals, camCtl, tow, step: (n = 1, dt = 1 / 30) => { for (let i = 0; i < n; i++) tick(dt); } };
 }
 
 init().catch((e) => {

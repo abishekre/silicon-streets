@@ -428,8 +428,10 @@ export function createPeople(scene, world) {
     for (const k of Object.keys(I)) I[k].instanceMatrix.needsUpdate = true;
     // one shared bound for all body parts: everyone is within 200 m of you
     bound.center.set(focus.x, 1, focus.z);
-    for (const cw of cows) cw.m.rotation.y = cw.yaw + Math.sin(t * 0.3 + cw.ph) * 0.15;
+    animateCows(t);
   }
+  // (when the simulation runs in the worker, the page only does this part)
+  function animateCows(t) { for (const cw of cows) cw.m.rotation.y = cw.yaw + Math.sin(t * 0.3 + cw.ph) * 0.15; }
 
   function collideCows(p, r) {
     for (const cw of cows) {
@@ -438,7 +440,7 @@ export function createPeople(scene, world) {
     }
     return null;
   }
-  return { update, collideCows, cows, peds, alarm };
+  return { update, animateCows, collideCows, cows, peds, alarm };
 }
 
 export function createPassengerMesh(scene) {
