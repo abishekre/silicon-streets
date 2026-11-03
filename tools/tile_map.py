@@ -28,6 +28,9 @@ def write_tiles(data, out):
     for p in data['pois']:
         tiles.setdefault(key(p['x'], p['z']), {'buildings': [], 'pois': []})['pois'].append(p)
     index = {k: v for k, v in data.items() if k not in ('buildings', 'pois')}
+    # the playable area: where the buildings are (whole roads in the export run on well past the downloaded box)
+    cx = [centre(b['p'])[0] for b in data['buildings']]; cz = [centre(b['p'])[1] for b in data['buildings']]
+    index['play'] = {'x1': math.floor(min(cx) / 10) * 10, 'x2': math.ceil(max(cx) / 10) * 10, 'z1': math.floor(min(cz) / 10) * 10, 'z2': math.ceil(max(cz) / 10) * 10}
     index['tile'] = TILE
     index['tiles'] = {k: [len(t['buildings']), len(t['pois'])] for k, t in sorted(tiles.items())}
     dump = lambda o, f: json.dump(o, open(os.path.join(out, f), 'w', encoding='utf-8'), separators=(',', ':'), ensure_ascii=False)

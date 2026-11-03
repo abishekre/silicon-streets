@@ -38,7 +38,7 @@ export function createLife(scene, world, ui, audio) {
     const r = major[Math.floor(rng() * major.length)], j = Math.floor(rng() * (r.pts.length - 1));
     const [ax, az] = r.pts[j], [bx, bz] = r.pts[j + 1], len = Math.hypot(bx - ax, bz - az); if (len < 20) continue;
     const dx = (bx - ax) / len, dz = (bz - az) / len, x = ax + dx * len / 2 + dz * (r.hw + 2.2), z = az + dz * len / 2 - dx * (r.hw + 2.2);
-    if (Math.abs(x) > 1250 || Math.abs(z) > 850 || world.insideBuilding(x, z, 1.5) || stops.some((s) => Math.hypot(s.x - x, s.z - z) < 250)) continue;
+    if (!world.inMap(x, z, 150) || world.insideBuilding(x, z, 1.5) || stops.some((s) => Math.hypot(s.x - x, s.z - z) < 250)) continue;
     const yaw = Math.atan2(-dz, dx);
     const mm = new THREE.Matrix4().compose(new THREE.Vector3(x, 0, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw), new THREE.Vector3(1, 1, 1));
     const g = merge([box(4.2, 0.12, 1.8, 0, 2.6, 0, '#1d4fa3'), box(0.1, 2.6, 0.1, -2, 1.3, -0.8, '#888'), box(0.1, 2.6, 0.1, 2, 1.3, -0.8, '#888'),
@@ -75,7 +75,7 @@ export function createLife(scene, world, ui, audio) {
   if (deepavali) {
     const pts = [];
     for (const b of world.buildings) {
-      if (b.style !== 'res' || b.h > 25 || rng() > 0.18 || Math.abs(b.cx) > 1300) continue;
+      if (b.style !== 'res' || b.h > 25 || rng() > 0.18 || !world.inMap(b.cx, b.cz, 100)) continue;
       const p = b.pts;
       for (let i = 0; i < p.length; i++) {
         const a = p[i], q = p[(i + 1) % p.length], len = Math.hypot(q[0] - a[0], q[1] - a[1]);

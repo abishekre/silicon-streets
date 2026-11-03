@@ -1115,7 +1115,7 @@ export function createParked(scene, world) {
       for (let s2 = 10; s2 < len - 10; s2 += 6 + rng() * 14) {
         if (rng() < 0.4) continue;
         const lat = r.hw + 0.5, x = ax + dx * s2 + dz * lat * side, z = az + dz * s2 - dx * lat * side;
-        if (Math.abs(x) > 1300 || Math.abs(z) > 880 || world.insideBuilding(x, z, 1.2)) continue;
+        if (!world.inMap(x, z, 100) || world.insideBuilding(x, z, 1.2)) continue;
         C.push({ x, z, yaw: Math.atan2(dx, dz) + (rng() < 0.5 ? 0 : Math.PI) });
       }
     }

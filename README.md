@@ -50,7 +50,13 @@ curl -A "bengaluru-game" --data-urlencode "data@tools/query.overpassql" https://
 python tools/osm2game.py osm.json public/data/map
 ```
 
-Change the bounding box in the query to cover other areas. The map is written as `index.json` (roads, parks, metro, landmarks) plus one file per 220 m tile (buildings and places). In the game, each tile's meshes are built when you come near it and dropped when you leave, so a bigger map costs download size and startup placement, not frame rate.
+Change the bounding box in the query to cover other areas.
+
+### Making the map bigger
+
+1. Widen the bounding box in `tools/query.overpassql`, download, and run the converter (above). It writes the playable area (`play` in `index.json`) from where the buildings are, and everything sizes itself from that: world bounds, edge barricades, where dogs, side hustles, fuel stations, cameras, jobs and parked cars can appear, the tow yard, and the minimap (kept under 4096 px).
+2. **Frame rate** stays about the same: meshes are built per 220 m tile in a worker as you move, and traffic, people and physics only exist around you.
+3. **Startup time and memory** grow with the map: roads, buildings, collisions, jobs and the minimap are still set up for the whole map at start (in the page and in the worker). A few km across is fine. For a whole city, those need to load per tile too, and positions need re-centring every couple of km (see `docs/performance-plan.md`, step F). The map is written as `index.json` (roads, parks, metro, landmarks) plus one file per 220 m tile (buildings and places). In the game, each tile's meshes are built when you come near it and dropped when you leave, so a bigger map costs download size and startup placement, not frame rate.
 
 ## Controls
 

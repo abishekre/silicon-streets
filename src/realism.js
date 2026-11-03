@@ -23,7 +23,7 @@ export function createRealism({ world, ui, audio, player, game, hooks }) {
     const dx = (bx - ax) / len, dz = (bz - az) / len, t = 0.5, side = rng() < 0.5 ? 1 : -1;
     const nx = dz * side, nz = -dx * side, off = r.hw + 6;
     const x = ax + dx * len * t + nx * off, z = az + dz * len * t + nz * off;
-    if (Math.abs(x) > 1250 || Math.abs(z) > 850 || world.insideBuilding(x, z, 6) || bunks.some((b) => Math.hypot(b.x - x, b.z - z) < 450)) continue;
+    if (!world.inMap(x, z, 150) || world.insideBuilding(x, z, 6) || bunks.some((b) => Math.hypot(b.x - x, b.z - z) < 450)) continue;
     const cng = bunks.filter((b) => b.cng).length < 3 && (bunks.length % 2 === 0);
     bunks.push({ x, z, cng, road: r.n || 'the main road', name: cng ? `Namma CNG Station${r.n ? `, ${r.n}` : ''}` : `Namma Petrol Bunk${r.n ? `, ${r.n}` : ''}`, yaw: Math.atan2(dx, dz) });
   }
@@ -54,7 +54,7 @@ export function createRealism({ world, ui, audio, player, game, hooks }) {
       if (!world.junctionR(p) || rng() > 0.35) continue;
       const len = Math.hypot(q[0] - p[0], q[1] - p[1]); if (len < 30) continue;
       const dx = (q[0] - p[0]) / len, dz = (q[1] - p[1]) / len, s = 16, x = p[0] + dx * s, z = p[1] + dz * s;
-      if (Math.abs(x) > 1300 || Math.abs(z) > 880) continue;
+      if (!world.inMap(x, z, 100)) continue;
       const painted = rng() < 0.35, b = { x, z, dx, dz, hw: r.hw, painted, armed: true };
       breakers.push(b); const k = key(x, z); (bgrid.get(k) || bgrid.set(k, []).get(k)).push(b);
       const yaw = Math.atan2(dx, dz), w = r.w;
@@ -70,7 +70,7 @@ export function createRealism({ world, ui, audio, player, game, hooks }) {
     const r = roads[Math.floor(rng() * roads.length)], i = Math.floor(rng() * (r.pts.length - 1));
     const [ax, az] = r.pts[i], [bx, bz] = r.pts[i + 1], len = Math.hypot(bx - ax, bz - az); if (len < 40) continue;
     const dx = (bx - ax) / len, dz = (bz - az) / len, x = (ax + bx) / 2, z = (az + bz) / 2;
-    if (cams.some((c) => Math.hypot(c.x - x, c.z - z) < 300) || Math.abs(x) > 1250 || Math.abs(z) > 850) continue;
+    if (cams.some((c) => Math.hypot(c.x - x, c.z - z) < 300) || !world.inMap(x, z, 150)) continue;
     const px = x + dz * (r.hw + 1), pz = z - dx * (r.hw + 1);
     if (world.insideBuilding(px, pz, 0.5)) continue;
     cams.push({ x, z, road: r.n || 'a main road', cd: 0 });

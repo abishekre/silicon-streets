@@ -152,7 +152,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
   const HOMES = world.buildings.filter((b) => b.style === 'res' && b.h < 30 && b.area > 80).filter((_, i) => i % 7 === 0).map((b, i) => {
     const c = curb(b.cx, b.cz); const nr = world.nearestRoad(c.x, c.z, 30);
     return { name: `${['Flat', 'House', 'Block'][i % 3]} ${1 + (i % 9)}${'ABCD'[i % 4]}${nr && nr.r.n ? ', ' + nr.r.n : ''}`, ...c };
-  }).filter((h) => Math.abs(h.x) < 1300 && Math.abs(h.z) < 880);
+  }).filter((h) => world.inMap(h.x, h.z, 100));
 
   const gig = () => (ride.kind === 'walk' ? WALK[ride.sub] : GIGS[ride.kind]);
   // on foot: short jobs near you

@@ -18,7 +18,7 @@ export function createMissions({ world, game, ui, audio, scene, navTo, clearNav,
   const spot = (re) => game.spots.find((s) => re.test(s.name));
   const nearDoor = (test, lo = 40, hi = 900) => { const p = here(); const c = world.doors.filter((d) => test(d) && dist(p, d) > lo && dist(p, d) < hi); return c.length ? pick(c) : world.doors.find(test); };
   const homesNear = (n, lo, hi) => {
-    const p = here(), c = world.buildings.filter((b) => b.style === 'res' && b.area > 80 && b.h < 30 && Math.abs(b.cx) < 1250 && Math.abs(b.cz) < 850 && Math.hypot(b.cx - p.x, b.cz - p.z) > lo && Math.hypot(b.cx - p.x, b.cz - p.z) < hi);
+    const p = here(), c = world.buildings.filter((b) => b.style === 'res' && b.area > 80 && b.h < 30 && world.inMap(b.cx, b.cz, 150) && Math.hypot(b.cx - p.x, b.cz - p.z) > lo && Math.hypot(b.cx - p.x, b.cz - p.z) < hi);
     const out = []; for (let i = 0; i < 40 && out.length < n && c.length; i++) { const b = pick(c); if (!out.some((o) => Math.hypot(o.cx - b.cx, o.cz - b.cz) < 150)) out.push(b); }
     return out.map((b) => ({ ...curb(b.cx, b.cz) }));
   };

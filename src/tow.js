@@ -22,7 +22,7 @@ export function createTow(scene, world, ui, audio) {
   truck.traverse((o) => (o.castShadow = true)); truck.visible = false; scene.add(truck);
 
   // the tow yard: a curb spot well away from the action
-  const yr = world.nearestRoad(-200, 380, 400) || world.nearestRoad(0, 0, 800);
+  const B = world.bounds, yr = (world.inMap(-200, 380) && world.nearestRoad(-200, 380, 400)) || world.nearestRoad((B.x1 + B.x2) / 2, (B.z1 + B.z2) / 2, 3000);
   const yard = { name: 'Traffic Police Tow Yard', x: yr.x + yr.dz * (yr.r.hw + 1.5), z: yr.z - yr.dx * (yr.r.hw + 1.5), yaw: Math.atan2(yr.dx, yr.dz) };
 
   const T = { blockT: 0, phase: 'none', t: 0, warned: false, impounded: false, s: 0, speed: 0, wait: 0 };

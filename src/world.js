@@ -4,7 +4,8 @@ import { Batch, WHITE, toPts, polyArea, centroid, bbox, pip, segDist, triangulat
 import * as T from './textures.js';
 
 // Built from OpenStreetMap data (© OpenStreetMap contributors, ODbL) via tools/osm2game.py
-export const BOUNDS = { x1: -1400, x2: 1400, z1: -960, z2: 960 };
+// the playable area comes from the map data (tools/tile_map.py writes it); this is only the fallback for old data
+const DEFAULT_BOUNDS = { x1: -1400, x2: 1400, z1: -960, z2: 960 };
 const CH = 220;
 const DRIVE = new Set(['primary', 'primary_link', 'secondary', 'secondary_link', 'tertiary', 'tertiary_link', 'trunk', 'residential', 'unclassified', 'living_street']);
 const MAJOR = new Set(['primary', 'secondary', 'tertiary', 'trunk']);
@@ -42,6 +43,7 @@ function themeFor(p) {
 const titleCase = (s) => s.toLowerCase().replace(/(^|[\s+])\S/g, (m) => m.toUpperCase());
 
 export function buildWorld(scene, data, opts = {}) {
+  const BOUNDS = data.play || DEFAULT_BOUNDS;
   // a worker (src/world-worker.js) running this same builder can make the chunk geometry instead of the main thread
   let remote = null, building = true;
   const rng = makeRng(11);
@@ -1164,5 +1166,7 @@ export function buildWorld(scene, data, opts = {}) {
     collide, solidAt, surfaceAt, zoneAt, update, nearestRoad, insideBuilding, addPoly, addCircle, segGrid, nodes, junctionR, groundAt, inside, ladders, vidhanaTop,
     potholes, buildings, roads, parks, cubbon, vidhana, stadium, ubc, stations: kiosks, doors, vendors, benches, tracks,
     graph: { nodes: gNodes, edges: gEdges, grid: edgeGrid }, materials: M, bounds: BOUNDS,
+    // inside the playable area, at least m metres from its edge (for placing things: dogs, hustles, fuel stations…)
+    inMap: (x, z, m = 0) => x > BOUNDS.x1 + m && x < BOUNDS.x2 - m && z > BOUNDS.z1 + m && z < BOUNDS.z2 - m,
   };
 }

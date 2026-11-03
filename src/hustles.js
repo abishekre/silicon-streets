@@ -26,7 +26,7 @@ export function createHustles({ scene, world, game, ui, audio, state, walker: W,
     for (let tries = 0; tries < 30; tries++) {
       const e = edges[Math.floor(Math.random() * edges.length)], s = Math.random() * e.len, side = Math.random() < 0.5 ? 1 : -1, lat = e.w / 2 + 2.2;
       const x = e.ax + e.dx * s + e.dz * lat * side, z = e.az + e.dz * s - e.dx * lat * side, d = Math.hypot(x - focus.x, z - focus.z);
-      if (d < 60 || d > 380 || Math.abs(x) > 1250 || Math.abs(z) > 850 || world.insideBuilding(x, z, 0.8) || live.some((h) => Math.hypot(h.x - x, h.z - z) < 120)) continue;
+      if (d < 60 || d > 380 || !world.inMap(x, z, 150) || world.insideBuilding(x, z, 0.8) || live.some((h) => Math.hypot(h.x - x, h.z - z) < 120)) continue;
       const K = KINDS[Math.floor(Math.random() * KINDS.length)];
       const g = new THREE.Group(), coin = new THREE.Mesh(coinG, coinMat), ring = new THREE.Mesh(ringG, ringMat);
       coin.position.y = 1.6; ring.position.y = 0.08; g.add(coin, ring); g.position.set(x, 0, z); scene.add(g);

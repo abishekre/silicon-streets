@@ -110,7 +110,7 @@ export function createUI(world, actions, input) {
 
   // ---------- minimap: centred on you, north up ----------
   const mm = $('minimap'), mctx = mm.getContext('2d');
-  const B = world.bounds, K = 0.5;
+  const B = world.bounds, K = Math.min(0.5, 4096 / Math.max(B.x2 - B.x1, B.z2 - B.z1));
   const bg = document.createElement('canvas'); bg.width = (B.x2 - B.x1) * K; bg.height = (B.z2 - B.z1) * K;
   {
     const c = bg.getContext('2d');
