@@ -66,6 +66,9 @@
   body.paused #hud { opacity: .3; }
 
   #leftTop { position: absolute; left: var(--gap); top: var(--gap); padding: 10px 14px; border-left: 4px solid var(--y); max-width: 320px; min-width: 180px; }
+  /* the current mission objective, under the place name */
+  #objective { position: absolute; left: var(--gap); top: 104px; max-width: 320px; padding: 7px 12px; border-left: 4px solid #b388ff; display: none; font-size: var(--fs-s); line-height: 1.35; }
+  #objective.on { display: block; } body:has(#objective.on) #toasts { top: max(196px, 30vh); } #objective b { display: block; font-size: var(--fs-xs); letter-spacing: 1px; text-transform: uppercase; color: #cbb6ff; } #objective em { font-style: normal; color: #ffd54f; font-variant-numeric: tabular-nums; }
   #locName { font-size: var(--fs-l); font-weight: 700; line-height: 1.2; }
   #locKn { font-size: var(--fs-s); color: var(--y); }
   #walletBox { display: flex; align-items: center; gap: 12px; font-size: var(--fs-s); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); max-height: 40px; overflow: hidden; transition: max-height .35s, opacity .35s, margin .35s, padding .35s; }
@@ -419,6 +422,7 @@
 <div id="app"></div>
 
 <div id="hud">
+  <div id="objective" class="panel"></div>
   <div id="leftTop" class="panel">
     <div id="locName">MG Road</div><div id="locKn" class="kn">ಮಹಾತ್ಮ ಗಾಂಧಿ ರಸ್ತೆ</div>
     <div id="walletBox"><span id="money">₹500</span><span id="respect" title="Respect: drive clean to earn it back"></span><span id="energy" title="Energy: eat and rest to refill"><span class="eb"><span id="energyBar"></span></span></span></div>

@@ -16,17 +16,17 @@ const km = (m) => (m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toF
 
 // gig apps: kinds and fares as in GIGS (game.js), so the estimate matches what the ride pays
 const GIG = {
-  'Namma Auto': { kind: 'auto', icon: 'auto', c: '#f2c230', fare: (m) => 30 + m * 0.06, word: 'Ride' },
-  Oober: { kind: 'car', icon: 'car', c: '#dfe3e8', fare: (m) => 60 + m * 0.1, word: 'Trip' },
-  Swiggly: { kind: 'scooter', icon: 'scooter', c: '#ff8a3d', fare: (m) => 35 + m * 0.035, word: 'Order', delivery: true },
-  Zoomato: { kind: 'scooter', icon: 'food', c: '#ff5a6e', fare: (m) => 35 + m * 0.035, word: 'Order', delivery: true },
+  'Namma Auto': { kind: 'auto', icon: 'auto', c: '#f2c230', fare: (m) => 50 + m * 0.1, word: 'Ride' },
+  Oober: { kind: 'car', icon: 'car', c: '#dfe3e8', fare: (m) => 100 + m * 0.16, word: 'Trip' },
+  Swiggly: { kind: 'scooter', icon: 'scooter', c: '#ff8a3d', fare: (m) => 60 + m * 0.06, word: 'Order', delivery: true },
+  Zoomato: { kind: 'scooter', icon: 'food', c: '#ff5a6e', fare: (m) => 60 + m * 0.06, word: 'Order', delivery: true },
 };
 const APPS = [
   ['Namma Auto', 'auto', '#f2c230'], ['Oober', 'car', '#dfe3e8'], ['Swiggly', 'scooter', '#ff8a3d'], ['Zoomato', 'food', '#ff5a6e'],
   ['Maps', 'map', '#4fb3ff'], ['Camera', 'camera', '#b9c2cf'], ['Messages', 'chat', '#3ddc84'], ['NammaPay', 'cash', '#9d8cff'],
-  ['Metro', 'metro', '#c27be0'], ['Garage', 'wrench', '#ffb300'], ['Settings', 'gear', '#9aa2ad'],
+  ['Metro', 'metro', '#c27be0'], ['Garage', 'wrench', '#ffb300'], ['Missions', 'flag', '#b388ff'], ['Settings', 'gear', '#9aa2ad'],
 ];
-const CONTACTS = { amma: ['Amma', 'smile'], anna: ['Mechanic Anna', 'wrench'], landlord: ['Landlord', 'building'], police: ['Traffic Police', 'police'], support: ['Gig Support', 'chat'] };
+const CONTACTS = { amma: ['Amma', 'smile'], anna: ['Mechanic Anna', 'wrench'], landlord: ['Landlord', 'building'], police: ['Traffic Police', 'police'], support: ['Gig Support', 'chat'], broker: ['Broker Babu', 'building'], founder: ['Arjun (founder)', 'laptop'], kannada: ['Kannada Meshtru', 'chat'] };
 
 // scripted threads: each step is one message, with optional replies ([label, next step or null]) and an optional
 // action: route (a place resolved when it's sent: 'yard', 'darshini') and/or mission (an id started when it's sent)
@@ -35,7 +35,7 @@ const SCRIPT = {
   firstGig: { from: 'support', text: 'Congratulations on your first gig! Ratings above 4 get tips. Low ratings get fewer requests.', replies: [['Thanks', 'firstGig2'], ['How do I earn more?', 'firstGig3']] },
   firstGig2: { from: 'support', text: 'Happy to help. This chat is now closed. Please rate Gig Support 5 stars.' },
   firstGig3: { from: 'support', text: 'Surge pays more: rush hour (8:30 to 11, 5:30 to 9), rain and late nights. Every app shows its own queue.' },
-  towed: { from: 'police', text: 'Your vehicle was towed for obstructing traffic. Fine of ₹500 collected. Collect it from the Traffic Police Tow Yard.', route: 'yard' },
+  towed: { from: 'police', text: 'Your vehicle was towed for obstructing traffic. It is at Namma Garage & Impound: pay the release fee there, take a garage loan, or earn it on foot first.', route: 'yard' },
   lowEnergy: { from: 'amma', text: 'Kanna, did you eat? You sound tired. Go have idli vada at a darshini.', replies: [['Yes Amma', 'lowEnergy2'], ['Not hungry', 'lowEnergy3']] },
   lowEnergy2: { from: 'amma', text: 'Good. Drink water also.' },
   lowEnergy3: { from: 'amma', text: 'Not hungry means hungry. Go and eat.', route: 'darshini' },
@@ -62,7 +62,7 @@ async function store(mode, fn) {
   });
 }
 
-export function createPhone({ game, tow, navTo, ui, actions, state, world, input, overlays, garage, player, walker: W, weather, renderer, composer, camera, orbit, openMap, home }) {
+export function createPhone({ missions, game, tow, navTo, ui, actions, state, world, input, overlays, garage, player, walker: W, weather, renderer, composer, camera, orbit, openMap, home }) {
   const el = $('phone'), scr = $('phScreen'), ban = $('phoneBanner');
   const S = { threads: {}, unread: {}, missions: {}, flags: {}, gig: { day: -1, min: 0, apps: {} }, ratings: [], pay: [], tickets: 0, nightDay: -1, lowDay: -1 };
   try { Object.assign(S, JSON.parse(localStorage.getItem('blr.phone') || '{}')); } catch (e) { /* storage blocked */ }
@@ -154,8 +154,18 @@ export function createPhone({ game, tow, navTo, ui, actions, state, world, input
     notify('Messages', CONTACTS[m.from][1], CONTACTS[m.from][0], m.text.replace('{call}', input.label('call')));
     save();
   }
+  const live = new Map(); let liveId = 0;
+  function message(from, text, replies) {
+    const th = S.threads[from] || (S.threads[from] = []), e = { dyn: text, t: clock() };
+    if (replies) { e.k = ++liveId + '.' + Date.now(); e.labels = replies.map((r) => r[0]); live.set(e.k, replies.map((r) => r[1])); }
+    th.push(e); S.unread[from] = (S.unread[from] || 0) + 1;
+    notify('Messages', CONTACTS[from] ? CONTACTS[from][1] : 'chat', CONTACTS[from] ? CONTACTS[from][0] : from, text);
+    save(); dirty = true;
+  }
   function reply(c, i, j) {
-    const e = S.threads[c][i], [label, next] = SCRIPT[e.id].replies[j];
+    const e = S.threads[c][i];
+    if (e.dyn) { const fns = live.get(e.k); e.ans = j; S.threads[c].push({ me: true, text: e.labels[j], t: clock() }); save(); dirty = true; if (fns) { live.delete(e.k); setTimeout(() => fns[j](), 600); } return; }
+    const [label, next] = SCRIPT[e.id].replies[j];
     e.ans = j; S.threads[c].push({ me: true, text: label, t: clock() }); save(); dirty = true;
     if (next) setTimeout(() => { send(next); if (view.app === 'Messages' && view.sub === c) S.unread[c] = 0; }, 1200);
   }
@@ -252,6 +262,7 @@ export function createPhone({ game, tow, navTo, ui, actions, state, world, input
       const th = S.threads[c] || [];
       return head(CONTACTS[c][0]) + `<div class="ph-thread">${th.map((e, i) => {
         if (e.me) return `<div class="msg me">${esc(e.text)}</div>`;
+        if (e.dyn) return `<div class="msg">${esc(e.dyn)}<span class="mt">${e.t}</span></div>${e.labels && e.ans == null && live.has(e.k) ? `<div class="ph-rep">${e.labels.map((l, j) => btn(esc(l), `reply:${c},${i},${j}`)).join('')}</div>` : ''}`;
         const m = SCRIPT[e.id]; if (!m) return '';
         const rep = m.replies && e.ans == null ? `<div class="ph-rep">${m.replies.map(([l], j) => btn(esc(l), `reply:${c},${i},${j}`)).join('')}</div>` : '';
         return `<div class="msg">${m.text.replace('{call}', ui.kbd('call'))}${e.route ? `<div class="ph-act">${routeBtn(e.route[0], e.route[1], e.route[2])}</div>` : ''}<span class="mt">${e.t}</span></div>${rep}`;
@@ -259,7 +270,7 @@ export function createPhone({ game, tow, navTo, ui, actions, state, world, input
     }
     return head('Messages', '#3ddc84') + Object.entries(CONTACTS).map(([k, [n, ic]]) => {
       const th = S.threads[k] || [], last = th[th.length - 1], u = S.unread[k] || 0;
-      const prev = last ? (last.me ? 'You: ' + last.text : strip(SCRIPT[last.id] ? SCRIPT[last.id].text : '')) : 'No messages';
+      const prev = last ? (last.me ? 'You: ' + last.text : last.dyn ? strip(last.dyn) : strip(SCRIPT[last.id] ? SCRIPT[last.id].text : '')) : 'No messages';
       return `<button class="ph-c" data-a="thread:${k}">${icon(ic)}<div><b>${n}</b><div class="ph-m">${esc(prev.replace('{call}', input.label('call')))}</div></div>${u ? `<span class="ph-badge">${u}</span>` : ''}</button>`;
     }).join('');
   }
@@ -296,7 +307,12 @@ export function createPhone({ game, tow, navTo, ui, actions, state, world, input
     h += sec('Your vehicles', Array.isArray(own) && own.length ? own.map((v) => `<div class="ph-kv"><span>${icon(v.type || v.kind || 'auto')} ${esc(v.name || v.label || VEHICLE_STATS[v.type || v.kind]?.label || 'Vehicle')}</span><b>${v.health != null ? Math.round(v.health) + '%' : ''}</b></div>`).join('') : '<div class="ph-m">Visit Namma Garage to buy and upgrade vehicles.</div>');
     return h + `<div class="ph-pad">${outside() ? btn(`${icon('pin')} Route to garage`, `route:${Math.round(yard.x)},${Math.round(yard.z)},${encodeURIComponent(yard.name || 'Garage')}`, 'wide') : ''}</div>`;
   }
-  const VIEWS = { Maps: mapsView, Camera: camView, Messages: msgView, NammaPay: payView, Metro: metroView, Garage: garageView };
+  function missionsView() {
+    if (!missions) return head('Missions', '#b388ff') + '<div class="ph-m">No missions yet.</div>';
+    const L = missions.list(), st = { active: 'In progress', done: 'Done', new: 'Not started' };
+    return head('Missions', '#b388ff') + sec('Story', L.map((m) => `<div class="ph-o">${icon(m.status === 'done' ? 'check' : 'flag')}<div><b>${esc(m.title)}</b><div class="ph-m">${CONTACTS[m.from] ? CONTACTS[m.from][0] : ''} · ${st[m.status]}</div></div>${m.status === 'new' && !L.some((x) => x.status === 'active') ? btn('Start', `mstart:${m.id}`, 'go') : m.status === 'active' ? btn('Drop', 'mdrop') : ''}</div>`).join(''));
+  }
+  const VIEWS = { Missions: missionsView, Maps: mapsView, Camera: camView, Messages: msgView, NammaPay: payView, Metro: metroView, Garage: garageView };
 
   let last = '';
   function render() {
@@ -314,6 +330,7 @@ export function createPhone({ game, tow, navTo, ui, actions, state, world, input
   function back() { if (view.sub != null) view.sub = null; else view.app = null; dirty = true; }
 
   const ACT = {
+    mstart: (id) => missions && missions.start(id), mdrop: () => missions && missions.cancel(),
     app: (a) => openApp(a), back, clearN: () => { N.length = 0; },
     accept: (id) => accept(+id), hudAccept: () => game.acceptOffer(), switch: (k) => actions.setVehicle(k),
     walkNow: () => { game.walkGigNow && game.walkGigNow(); notify('Gigs', 'walk', 'Looking for on-foot jobs', 'An offer will pop up in a moment.', false); },
@@ -388,7 +405,7 @@ export function createPhone({ game, tow, navTo, ui, actions, state, world, input
     seen.inside = inside;
     // a QR ticket pays for the ride the station just charged a token for
     const metro = state.mode === 'metro';
-    if (metro && !seen.metro && S.tickets > 0) { S.tickets--; payLabel = 'QR ticket scanned: token refunded'; w.money += 20; save(); }
+    // (QR tickets are scanned at the station gates, src/venues.js)
     seen.metro = metro;
     if (document.body.classList.contains('phonecam') && !state.photo) document.body.classList.remove('phonecam');
     if (open) {
@@ -404,7 +421,7 @@ export function createPhone({ game, tow, navTo, ui, actions, state, world, input
   const recent = () => (performance.now() - lastToast.at < 1500 ? lastToast.t : '');
 
   return {
-    update, openApp, notify, get open() { return open; },
+    update, openApp, notify, message, get open() { return open; },
     toggle: () => (overlays.has('phone') ? overlays.close('phone') : overlays.open('phone')),
     S, Q,
   };

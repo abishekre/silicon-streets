@@ -21,11 +21,11 @@ const DROP_LINES = ['Thank you anna, keep the change!', 'Super ride guru. 5 star
 const GIGS = {
   auto: {
     apps: ['Namma Auto'], icon: 'auto', who: 'Passenger', word: 'ride', pickLabel: 'pick up passenger', dropLabel: 'drop off',
-    fare: (m) => 30 + m * 0.06, pickup: PICKUP_LINES, ride: RIDE_LINES, crash: CRASH_LINES, drop: DROP_LINES, bad: 'Next time Namma Metro, anna.',
+    fare: (m) => 50 + m * 0.1, pickup: PICKUP_LINES, ride: RIDE_LINES, crash: CRASH_LINES, drop: DROP_LINES, bad: 'Next time Namma Metro, anna.',
   },
   scooter: {
     apps: ['Swiggly', 'Zoomato'], icon: 'scooter', who: 'Customer', word: 'order', pickLabel: 'collect the order', dropLabel: 'hand over the order', delivery: true,
-    fare: (m) => 35 + m * 0.035,
+    fare: (m) => 60 + m * 0.06,
     pickup: ['Order for {app}? Packing done, saar. Hot hot!', 'Extra chutney inside, don\'t tilt the bag!', 'Biryani parcel, handle with love.'],
     ride: ['Customer (on the phone): "Where are you? I can see you on the map going the wrong way."', 'Customer (on the phone): "Please don\'t ring the bell, baby is sleeping."', 'Customer (on the phone): "Ask security for Block C, not Block B!"', 'Customer (on the phone): "Add one Coke? …Never mind."'],
     crash: ['Customer (on the phone): "Is my biryani okay??"', 'Customer (on the phone): "Why is the tracker shaking?"', 'The dal is now everywhere. Oops.'],
@@ -34,7 +34,7 @@ const GIGS = {
   },
   car: {
     apps: ['Oober'], icon: 'car', who: 'Rider', word: 'trip', pickLabel: 'pick up rider', dropLabel: 'end trip', surge: true,
-    fare: (m) => 60 + m * 0.1,
+    fare: (m) => 100 + m * 0.16,
     pickup: ['Hi, {d}? Please take the fastest route, I have a 2 pm standup.', 'Are you Oober for Priya? Cool. {d}, please.', 'Bro, {d}. And can you increase the AC?'],
     ride: ['Rider: "Bro, which startup do you work for?"', 'Rider: "Can you avoid Outer Ring Road? Actually, everything is ORR now."', 'Rider: "My cab last week had a karaoke system."', 'Rider: "Is this the Hebbal flyover? No? Okay."'],
     crash: ['Rider: "Bro! My cold brew!"', 'Rider: "I am giving you 3 stars for that."', 'Rider: "Easy, easy!"'],
@@ -46,18 +46,18 @@ const GIGS = {
 // On-foot gigs: no vehicle needed (getting into one cancels them). Same job loop, offer card, rings and GPS.
 const WALK = {
   deliver: { app: 'Swiggly Genie', icon: 'walk', who: 'Customer', word: 'walking delivery', pickLabel: 'collect the parcel', dropLabel: 'hand over the parcel', delivery: true,
-    pay: (d) => 25 + d * 0.08, title: (f) => `Walk a parcel from ${f.name}`,
+    pay: (d) => 60 + d * 0.15, title: (f) => `Walk a parcel from ${f.name}`,
     lines: ['Customer (on the phone): "You are walking? Respect, anna."', 'Customer (on the phone): "Gate 2, not Gate 1. Gate 1 is decorative."'],
     drop: ['Customer: "On foot and still on time. Five stars."', 'Customer: "Here, ₹10 for the shoe leather."'] },
   tourist: { app: 'Namma Tourist', icon: 'landmark', who: 'Tourist', word: 'guided walk', pickLabel: 'meet the tourist', dropLabel: 'show them the sight',
-    pay: () => 70, title: (f) => `Walk a tourist from ${f.name}`,
+    pay: () => 180, title: (f) => `Walk a tourist from ${f.name}`,
     lines: ['Tourist: "Is it always this green? Where are the 2,000 lakes?"', 'Tourist: "My cab driver said the metro is faster. Is that true?"', 'Tourist: "What is that smell? Oh. Filter coffee. Amazing."', 'Tourist: "Why is that cow at the signal?"'],
     drop: ['Tourist: "Wow. Worth the walk. Here, for you."', 'Tourist: "Five stars on TripAdvisor, I promise."'] },
   flyers: { app: 'HustleHQ', icon: 'receipt', who: 'Founder', word: 'flyer run', pickLabel: 'collect the flyers',
-    pay: () => 90, title: (f) => `Hand out startup flyers near ${f.name}`,
+    pay: () => 250, title: (f) => `Hand out startup flyers near ${f.name}`,
     lines: ['"Another food delivery app? Bro, there are eleven."', '"Is it AI? Then no thanks. Actually, yes, give two."', '"I already have this app. And the other one. And the other one."', '"Will it fix Silk Board? No? Okay, keep it."', '"Super, I will put it with my other 40 flyers."'] },
   queue: { app: 'QueueForU', icon: 'clock', who: 'Client', word: 'queue shift', pickLabel: 'join the queue',
-    pay: () => 120, title: (f) => `Stand in a queue at ${f.name} for a busy techie`,
+    pay: () => 300, title: (f) => `Stand in a queue at ${f.name} for a busy techie`,
     lines: ['The man in front: "This queue was here before Bengaluru was Bangalore."', 'Someone cuts in. Nobody says anything. Everyone sighs.', 'Your client (on the phone): "Are you near the front? I have a standup in 5."', 'The counter closes for lunch. It reopens. Lunch was 4 minutes.'] },
 };
 
@@ -298,7 +298,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
   // finishing an on-foot job: pay, a line, back to waiting for the next one
   function walkDone(total, line) {
     const G = WALK[ride.sub];
-    ride.earned += total; ride.rides++; wallet.earn(total, `${G.app} ${G.word}`);
+    ride.earned += total; ride.rides++; wallet.earn(total, `${G.app} ${G.word}`); streak();
     ui.toast(`${G.app} paid ₹${total}`, `${G.word[0].toUpperCase() + G.word.slice(1)} done.`, 'cash', 'cash');
     if (line) ui.dialogue(line);
     audio.cash(); pmesh.visible = false; dropBeam.hide();
@@ -322,7 +322,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
     // no tips for drivers with a bad reputation
     const tip = ride.rating >= 4.5 && early && wallet.respect > 40 ? 10 + Math.round(Math.random() * 3) * 5 : 0;
     const total = Math.round(ride.fare) + tip;
-    ride.earned += total; ride.rides++; wallet.earn(total, `${ride.app} ${G.word}`);
+    ride.earned += total; ride.rides++; wallet.earn(total, `${ride.app} ${G.word}`); streak();
     ui.toast(`${ride.app} paid ₹${total}`, `${ride.surge > 1 ? 'Surge 1.6× · ' : ''}Fare ₹${Math.round(ride.fare)}${tip ? ` + ₹${tip} tip` : ''}${G.delivery && !early ? ' · late!' : ''} · rated ${Math.round(ride.rating)}/5`, 'cash', 'cash');
     const say = ride.rating >= 4 ? pick(G.drop) : G.bad;
     ui.dialogue(say.includes(':') ? say : `${G.who}: "${say}"`);
@@ -331,6 +331,8 @@ export function createGame(scene, world, people, ui, audio, hooks) {
     ride.state = 'cooldown'; ride.timer = 5 + (100 - wallet.respect) * 0.4; dropBeam.hide();
   }
 
+  // every fifth job pays a bonus
+  function streak() { if (ride.rides % 5 === 0) { wallet.earn(500, `Gig streak bonus: ${ride.rides} jobs`); setTimeout(() => ui.toast('Streak bonus: ₹500', `${ride.rides} jobs done. Keep going.`, 'star'), 900); } }
   function interact(ctx) { const a = nearestAction(ctx); if (a) { a.run(); return true; } return false; }
   function onCrash() {
     if (ride.state !== 'riding' || ride.kind === 'walk') return; const G = GIGS[ride.kind];
@@ -371,7 +373,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
       if (ride.quip <= 0 && G.lines && ride.sub !== 'flyers') { ride.quip = 15 + Math.random() * 10; ui.dialogue(pick(G.lines)); }
       // the tourist walks a couple of steps behind you
       if (ride.sub === 'tourist') { const dx = w.x - pmesh.position.x, dz = w.z - pmesh.position.z, d = Math.hypot(dx, dz); if (d > 1.8) { const k = Math.min(1, dt * 3 * (d - 1.8) / d); pmesh.position.x += dx * k; pmesh.position.z += dz * k; } pmesh.rotation.y = Math.atan2(dx, dz); }
-      if (ride.sub === 'flyers' && (ride.left -= dt) <= 0) walkDone(ride.handed.size * 6, `Founder (on the phone): "Only ${ride.handed.size}? We will call it a soft launch."`);
+      if (ride.sub === 'flyers' && (ride.left -= dt) <= 0) walkDone(ride.handed.size * 20, `Founder (on the phone): "Only ${ride.handed.size}? We will call it a soft launch."`);
       if (ride.sub === 'queue' && dist(w, ride.from) < RING_R) { ride.qT += dt; ride.fare = G.pay() * Math.min(1, ride.qT / 60); if (ride.qT >= 60) walkDone(G.pay(), 'Client (on the phone): "You got the token? You are a legend."'); }
     }
     else if (ride.state === 'riding' && ctx.mode === 'drive') {
