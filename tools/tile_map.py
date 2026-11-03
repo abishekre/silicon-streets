@@ -35,6 +35,10 @@ def write_tiles(data, out):
     index['tiles'] = {k: [len(t['buildings']), len(t['pois'])] for k, t in sorted(tiles.items())}
     dump = lambda o, f: json.dump(o, open(os.path.join(out, f), 'w', encoding='utf-8'), separators=(',', ':'), ensure_ascii=False)
     for k, t in tiles.items(): dump(t, f'{k}.json')
+    # one bundle of every tile too, so startup is a single request instead of one per tile
+    order = sorted(tiles)
+    dump({'buildings': [b for k in order for b in tiles[k]['buildings']], 'pois': [p for k in order for p in tiles[k]['pois']]}, 'all.json')
+    index['bundle'] = 'all.json'
     dump(index, 'index.json')
     print('tiles', len(tiles), 'buildings', len(data['buildings']), 'pois', len(data['pois']))
 

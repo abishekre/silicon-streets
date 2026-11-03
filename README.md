@@ -1,6 +1,6 @@
 # Silicon Streets
 
-A browser game set in central Bengaluru, built with Three.js on real OpenStreetMap streets.
+A browser game set in Bengaluru, built with Three.js on real OpenStreetMap streets.
 Drive an auto, scooter or car, take Namma Auto / Swiggly / Zoomato / Oober jobs, walk into cafés,
 ride the metro, climb Vidhana Soudha, and get caught in the 4 PM rain.
 
@@ -43,20 +43,23 @@ Notes for a public launch:
 
 ## Refresh or extend the map
 
-The map comes from an Overpass export of central Bengaluru (`tools/query.overpassql`):
+The map covers central Bengaluru, Indiranagar, Domlur, Koramangala, Madiwala, Banaswadi, Kasturi Nagar,
+Kammanahalli, Kalyan Nagar and the roads that join them. The areas are boxes in `tools/areas.json`.
+Download each one from Overpass (a single big query usually times out) and merge them:
 
 ```bash
-curl -A "bengaluru-game" --data-urlencode "data@tools/query.overpassql" https://overpass-api.de/api/interpreter -o osm.json
-python tools/osm2game.py osm.json public/data/map
+python tools/make_query.py
+curl -A "silicon-streets" --data-urlencode "data@tools/query.overpassql" https://overpass-api.de/api/interpreter -o osm.json
+python -X utf8 tools/osm2game.py a0.json a1.json ... public/data/map
 ```
 
-Change the bounding box in the query to cover other areas.
+`make_query.py` writes one query covering every area. For a big map, split it into one query per area. The converter takes any number of exports and de-duplicates them.
 
 ### Making the map bigger
 
-1. Widen the bounding box in `tools/query.overpassql`, download, and run the converter (above). It writes the playable area (`play` in `index.json`) from where the buildings are, and everything sizes itself from that: world bounds, edge barricades, where dogs, side hustles, fuel stations, cameras, jobs and parked cars can appear, the tow yard, and the minimap (kept under 4096 px).
-2. **Frame rate** stays about the same: meshes are built per 220 m tile in a worker as you move, and traffic, people and physics only exist around you.
-3. **Startup time and memory** grow with the map: roads, buildings, collisions, jobs and the minimap are still set up for the whole map at start (in the page and in the worker). A few km across is fine. For a whole city, those need to load per tile too, and positions need re-centring every couple of km (see `docs/performance-plan.md`, step F). The map is written as `index.json` (roads, parks, metro, landmarks) plus one file per 220 m tile (buildings and places). In the game, each tile's meshes are built when you come near it and dropped when you leave, so a bigger map costs download size and startup placement, not frame rate.
+1. Add a box to `tools/areas.json`, download, and convert (above). The converter writes the playable area (`play` in `index.json`) from where the buildings are. Everything sizes itself from that: world bounds, edge barricades, where dogs, side hustles, fuel stations, cameras, jobs and parked cars can appear, the tow yard, and the minimap (kept under 4096 px). Neighbourhood names for the map and fast travel are in `src/travel.js`.
+2. **Frame rate** stays about the same. Meshes are built per 220 m tile in a worker as you move, and traffic, people and physics only exist around you.
+3. **Startup** loads `all.json` (every tile in one file) and sets up roads, buildings and collisions for the whole map. The per-tile files stay for later streaming. The current map (82,000 buildings, about 8 × 13 km) takes about 10 s to set up on a laptop. For a whole city, setup needs to load per tile too, and positions need re-centring every couple of km (see `docs/performance-plan.md`, step F).
 
 ## Controls
 
@@ -67,7 +70,7 @@ Change the bounding box in the query to cover other areas.
 | Interact (cafés, carts, metro, jobs) | E |
 | Accept / decline a job | Y / N |
 | Jump · climb ledges and ladders | Space · push into it / W |
-| Map, pins, search | M (or click the minimap) |
+| Map, pins, search, fast travel | M (or click the minimap), then pick a place |
 | Radio | K |
 | Camera · photo mode | C · P |
 | Weather · time · live sync | R · T · L |

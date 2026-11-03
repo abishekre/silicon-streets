@@ -1,6 +1,7 @@
 """Convert an Overpass JSON export (out geom tags) into the compact map used by the game.
 
-Usage: python tools/osm2game.py <overpass.json> public/data/map
+Usage: python tools/osm2game.py <overpass.json> [more.json ...] public/data/map
+(several exports, e.g. one per area in tools/areas.json, are merged; features in more than one are kept once)
 Query used: tools/query.overpassql. Map data (c) OpenStreetMap contributors, ODbL.
 """
 import json, math, sys, zlib
@@ -87,8 +88,12 @@ GLASS = ['tower', 'prestige', 'rmz', 'embassy', 'pinnacle', 'ub ', 'heights', 't
 RED = ['library', 'museum', 'mayo hall', 'court', 'victory hall', 'post office', 'krishi', 'kacheri']
 
 
-def main(src, dst):
-    els = json.load(open(src, encoding='utf-8'))['elements']
+def main(srcs, dst):
+    seen, els = set(), []
+    for src in srcs:
+        for e in json.load(open(src, encoding='utf-8'))['elements']:
+            k = (e['type'], e['id'])
+            if k not in seen: seen.add(k); els.append(e)
     roads, buildings, areas, metro, stations, pois = [], [], [], [], [], []
     polys = {}  # named landuse polygons for classification
     for e in els:
@@ -210,4 +215,4 @@ def main(src, dst):
 
 
 if __name__ == '__main__':
-    main(sys.argv[1], sys.argv[2])
+    main(sys.argv[1:-1], sys.argv[-1])

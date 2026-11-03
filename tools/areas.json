@@ -1,0 +1,13 @@
+{
+  "note": "Map areas to download: [south, west, north, east] in degrees. Neighbourhoods plus the stretches that connect them. tools/make_query.py turns this into query.overpassql.",
+  "areas": {
+    "central (MG Road, Cubbon Park, Vidhana Soudha)": [12.9665, 77.5880, 12.9840, 77.6140],
+    "Ulsoor (central to Indiranagar)": [12.9700, 77.6140, 12.9840, 77.6300],
+    "Indiranagar": [12.9620, 77.6300, 12.9860, 77.6520],
+    "Shanthinagar, Wilson Garden (central to Koramangala)": [12.9420, 77.6050, 12.9665, 77.6250],
+    "Domlur, Ejipura (Indiranagar to Koramangala)": [12.9420, 77.6300, 12.9620, 77.6450],
+    "Koramangala, Madiwala": [12.9150, 77.6080, 12.9420, 77.6380],
+    "Byappanahalli, Old Madras Road (Indiranagar to Banaswadi)": [12.9860, 77.6300, 13.0000, 77.6550],
+    "Banaswadi, Kasturi Nagar, Kammanahalli, Kalyan Nagar": [13.0000, 77.6300, 13.0330, 77.6650]
+  }
+}

@@ -161,15 +161,18 @@ export function buildWorld(scene, data, opts = {}) {
   function nearestRoad(x, z, maxD = 40, filter = (r) => r.drive) {
     segGrid.query(x, z, maxD, sq);
     let best = null;
+    let bs = null, bd = 0, bt = 0, score = Infinity;
     for (const s of sq) {
-      if (!filter(s.r)) continue;
-      const d = segDist(x, z, s.ax, s.az, s.bx, s.bz);
-      if (d.d < maxD && (!best || d.d - s.r.hw < best.d - best.r.hw)) {
-        const l = Math.hypot(s.bx - s.ax, s.bz - s.az) || 1;
-        best = { d: d.d, x: d.cx, z: d.cz, dx: (s.bx - s.ax) / l, dz: (s.bz - s.az) / l, r: s.r };
-      }
+      // the segment distance, inline (this runs for every building edge at load: no garbage per segment)
+      const dx = s.bx - s.ax, dz = s.bz - s.az, l2 = dx * dx + dz * dz || 1e-9;
+      let t = ((x - s.ax) * dx + (z - s.az) * dz) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const ex = x - s.ax - dx * t, ez = z - s.az - dz * t, d = Math.sqrt(ex * ex + ez * ez);
+      if (d >= maxD || d - s.r.hw >= score || !filter(s.r)) continue;
+      bs = s; bd = d; bt = t; score = d - s.r.hw;
     }
-    return best;
+    if (!bs) return null;
+    const l = Math.hypot(bs.bx - bs.ax, bs.bz - bs.az) || 1;
+    return { d: bd, x: bs.ax + (bs.bx - bs.ax) * bt, z: bs.az + (bs.bz - bs.az) * bt, dx: (bs.bx - bs.ax) / l, dz: (bs.bz - bs.az) / l, r: bs.r };
   }
 
   // parks (for paths + zones)
@@ -344,7 +347,10 @@ export function buildWorld(scene, data, opts = {}) {
       segGrid.query((bb0.x1 + bb0.x2) / 2, (bb0.z1 + bb0.z2) / 2, Math.max(bb0.x2 - bb0.x1, bb0.z2 - bb0.z1) / 2 + 2, sq);
       for (const s of sq) {
         if (!s.r.drive) continue;
-        for (const t of [0.25, 0.5, 0.75]) if (pip(s.ax + (s.bx - s.ax) * t, s.az + (s.bz - s.az) * t, pts)) { over = true; break; }
+        for (let t = 0.25; t < 0.8; t += 0.25) {
+          const px = s.ax + (s.bx - s.ax) * t, pz = s.az + (s.bz - s.az) * t;
+          if (px >= bb0.x1 && px <= bb0.x2 && pz >= bb0.z1 && pz <= bb0.z2 && pip(px, pz, pts)) { over = true; break; }
+        }
         if (over) break;
       }
       if (over) continue;
@@ -686,7 +692,17 @@ export function buildWorld(scene, data, opts = {}) {
   const treeCols = { green: ['#3f7a2e', '#4f8f35', '#2f6b2a', '#5b9a3c', '#447f30'], gulmohar: ['#d9471c', '#e0561e'], jacaranda: ['#8a6bd1', '#9b7ad8'], yellow: ['#e0b52a'] };
   const pickTreeCol = () => { const r = rng(); return rng.pick(r < 0.62 ? treeCols.green : r < 0.78 ? treeCols.gulmohar : r < 0.92 ? treeCols.jacaranda : treeCols.yellow); };
   const lampsAll = [];
-  const offRoad = (x, z, selfR, m) => { segGrid.query(x, z, 12, sq); for (const s of sq) { if (s.r === selfR || (!s.r.drive && s.r.k !== 'service')) continue; if (segDist(x, z, s.ax, s.az, s.bx, s.bz).d < s.r.hw + m) return false; } return true; };
+  const offRoad = (x, z, selfR, m) => {
+    segGrid.query(x, z, 12, sq);
+    for (const s of sq) {
+      if (s.r === selfR || (!s.r.drive && s.r.k !== 'service')) continue;
+      const dx = s.bx - s.ax, dz = s.bz - s.az, l2 = dx * dx + dz * dz || 1e-9;
+      let t = ((x - s.ax) * dx + (z - s.az) * dz) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const ex = x - s.ax - dx * t, ez = z - s.az - dz * t, R = s.r.hw + m;
+      if (ex * ex + ez * ez < R * R) return false;
+    }
+    return true;
+  };
   for (const r of roads) {
     if (!r.drive || !inB(r.pts[0][0], r.pts[0][1], 50)) continue;
     const major = MAJOR.has(r.k);

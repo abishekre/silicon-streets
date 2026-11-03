@@ -68,7 +68,8 @@ export function triangulate(pts) {
 // Spatial hash for anything with a bbox
 export class Grid {
   constructor(cell = 24) { this.cell = cell; this.map = new Map(); this.stamp = 0; }
-  key(i, j) { return i * 73856093 ^ j * 19349663; }
+  // exact and small (a V8 small integer), so the Map hashes fast and cells never collide; good for ±8192 cells each way
+  key(i, j) { return (i + 8192) * 16384 + (j + 8192); }
   add(it, x1, x2, z1, z2) {
     it._s = 0; const c = this.cell;
     for (let i = Math.floor(x1 / c); i <= Math.floor(x2 / c); i++)
