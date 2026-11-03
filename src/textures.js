@@ -145,21 +145,25 @@ const POI_STYLE = {
   cafe: ['#3e2723', '#ffcc80', 'ಕಾಫಿ · COFFEE'], restaurant: ['#b71c1c', '#fff59d', 'ಹೋಟೆಲ್ · ಊಟ'], fast_food: ['#e65100', '#ffffff', 'ಫಾಸ್ಟ್ ಫುಡ್'],
   pub: ['#1b1b1b', '#ffb300', 'ಪಬ್ · ಬಿಯರ್'], bar: ['#311b92', '#e1bee7', 'ಬಾರ್'], ice_cream: ['#ad1457', '#ffffff', 'ಐಸ್ ಕ್ರೀಂ'],
 };
+// 256 named places at 256x64 each (8 across, 32 down); `pn` is the parody name shown on the sign
+export const POI_COLS = 8, POI_ROWS = 32;
 export function poiSignAtlas(pois) {
   const [c, x] = cnv(2048, 2048);
   pois.forEach((p, i) => {
-    const cx = (i % 4) * 512, cy = Math.floor(i / 4) * 128;
+    const cx = (i % POI_COLS) * 256, cy = Math.floor(i / POI_COLS) * 64;
     const [bg, fg, kn] = POI_STYLE[p.a] || POI_STYLE.restaurant;
-    x.fillStyle = bg; x.fillRect(cx, cy, 512, 128);
-    x.strokeStyle = fg; x.globalAlpha = 0.45; x.lineWidth = 4; x.strokeRect(cx + 6, cy + 6, 500, 116); x.globalAlpha = 1;
-    x.fillStyle = fg; x.textAlign = 'center'; x.textBaseline = 'middle';
-    const name = p.n.toUpperCase();
-    let fs = 50; x.font = `700 ${fs}px "Space Grotesk", sans-serif`;
-    while (x.measureText(name).width > 470 && fs > 18) { fs -= 2; x.font = `700 ${fs}px "Space Grotesk", sans-serif`; }
-    x.fillText(name, cx + 256, cy + 50);
-    x.font = '600 26px "Noto Sans Kannada", sans-serif'; x.fillText(kn, cx + 256, cy + 98);
+    signCell(x, cx, cy, (p.pn || p.n).toUpperCase(), kn, bg, fg);
   });
   return tex(c, { repeat: false });
+}
+function signCell(x, cx, cy, en, kn, bg, fg) {
+  x.fillStyle = bg; x.fillRect(cx, cy, 256, 64);
+  x.strokeStyle = fg; x.globalAlpha = 0.45; x.lineWidth = 2; x.strokeRect(cx + 3, cy + 3, 250, 58); x.globalAlpha = 1;
+  x.fillStyle = fg; x.textAlign = 'center'; x.textBaseline = 'middle';
+  let fs = 25; x.font = `700 ${fs}px "Space Grotesk", sans-serif`;
+  while (x.measureText(en).width > 236 && fs > 10) { fs -= 1; x.font = `700 ${fs}px "Space Grotesk", sans-serif`; }
+  x.fillText(en, cx + 128, cy + 25);
+  x.font = '600 13px "Noto Sans Kannada", "Space Grotesk", sans-serif'; x.fillText(kn, cx + 128, cy + 49);
 }
 
 export function kerb() {
@@ -248,19 +252,11 @@ export const SIGNS = [
 ];
 export const METRO_SIGN = 15;
 
-export function signAtlas() {
-  const [c, x] = cnv(1024, 1024);
-  SIGNS.forEach(([en, kn, bg, fg], i) => {
-    const cx = (i % 2) * 512, cy = Math.floor(i / 2) * 128;
-    x.fillStyle = bg; x.fillRect(cx, cy, 512, 128);
-    x.strokeStyle = fg; x.globalAlpha = 0.5; x.lineWidth = 4; x.strokeRect(cx + 6, cy + 6, 500, 116); x.globalAlpha = 1;
-    x.fillStyle = fg; x.textAlign = 'center'; x.textBaseline = 'middle';
-    let fs = 50; x.font = `700 ${fs}px "Space Grotesk", sans-serif`;
-    while (x.measureText(en).width > 470 && fs > 20) { fs -= 2; x.font = `700 ${fs}px "Space Grotesk", sans-serif`; }
-    x.fillText(en, cx + 256, cy + 48);
-    x.font = `600 28px "Noto Sans Kannada", "Space Grotesk", sans-serif`;
-    x.fillText(kn, cx + 256, cy + 96);
-  });
+// the generic shop signs (src/names.js genericSigns): 256 at 256x64, 8 across and 32 down
+export const SIGN_COLS = 8, SIGN_ROWS = 32;
+export function signAtlas(list = SIGNS) {
+  const [c, x] = cnv(2048, 2048);
+  list.forEach(([en, kn, bg, fg], i) => signCell(x, (i % SIGN_COLS) * 256, Math.floor(i / SIGN_COLS) * 64, en.toUpperCase(), kn, bg, fg));
   return tex(c, { repeat: false });
 }
 

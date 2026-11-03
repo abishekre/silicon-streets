@@ -274,8 +274,8 @@ async function init() {
     ...world.stations.map((s) => ({ name: `${s.name} Metro`, x: s.ex, z: s.ez, icon: 'metro' })),
     ...(world.vidhana ? [{ name: 'Vidhana Soudha', x: world.vidhana.fx, z: world.vidhana.fz, icon: 'landmark' }] : []),
     ...(world.stadium ? [{ name: 'Chinnaswamy Stadium', x: world.stadium.x, z: world.stadium.z + world.stadium.r + 15, icon: 'cricket' }] : []),
-    ...(world.ubc ? [{ name: 'UB City', x: world.ubc.x, z: world.ubc.z, icon: 'city' }] : []),
-    ...game.spots.filter((s) => !/Metro|Vidhana|Chinnaswamy|UB City/.test(s.name)).map((s) => ({ ...s, icon: 'road' })),
+    ...(world.ubc ? [{ name: 'UV City', x: world.ubc.x, z: world.ubc.z, icon: 'city' }] : []),
+    ...game.spots.filter((s) => !/Metro|Vidhana|Chinnaswamy|UV City/.test(s.name)).map((s) => ({ ...s, icon: 'road' })),
     ...world.doors.filter((d) => /cafe|darshini|pub/.test(d.theme) && !/^(Sri Sai|Namma|Fourth|Swalpa|Malleshwaram|Peak|Dosa|Ctrl|Iyengar)/i.test(d.name)).slice(0, 12).map((d) => ({ name: d.name, x: d.x, z: d.z, icon: d.theme === 'pub' ? 'beer' : 'coffee' })),
   ];
   // everything you can search for on the big map

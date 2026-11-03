@@ -111,11 +111,14 @@ export function createGame(scene, world, people, ui, audio, hooks) {
   }
   const SPOTS = [];
   const addSpot = (name, p) => { if (p) SPOTS.push({ name, ...curb(p.x, p.z) }); };
-  for (const n of ['Church Street', 'Brigade Road', 'Residency Road', 'Museum Road', 'Lavelle Road', "Saint Mark's Road", 'Vittal Mallya Road', 'Kasturba Road', 'Dickenson Road', 'Infantry Road', 'Richmond Road', 'Commissariat Road', 'Cubbon Road']) addSpot(n, roadMid(n));
+  for (const n of ['Church Street', 'Brigade Road', 'Residency Road', 'Museum Road', 'Lavelle Road', "Saint Mark's Road", 'Vittal Mallya Road', 'Kasturba Road', 'Dickenson Road', 'Infantry Road', 'Richmond Road', 'Commissariat Road', 'Cubbon Road',
+    // the neighbourhoods round the centre
+    '100 Feet Road', 'Indiranagar Double Road', 'HAL Old Airport Road', 'Chinmaya Mission Hospital Road', 'Ejipura Main Road', '80 Feet Road',
+    'Hosur Road', 'Sarjapura Road', 'Banaswadi Main Road', 'Kammanahalli Main Road', 'Hennur Main Road', 'Swamy Vivekananda Road', 'Tavarekere Main Road']) addSpot(n, roadMid(n));
   for (const s of world.stations) addSpot(s.name + ' Metro', { x: s.ex, z: s.ez });
   if (world.vidhana) addSpot('Vidhana Soudha', { x: world.vidhana.fx, z: world.vidhana.fz });
   if (world.stadium) addSpot('Chinnaswamy Stadium', { x: world.stadium.x, z: world.stadium.z + world.stadium.r + 20 });
-  if (world.ubc) addSpot('UB City', world.ubc);
+  if (world.ubc) addSpot('UV City', world.ubc);
 
   const ride = { state: 'cooldown', timer: 4, from: null, to: null, fare: 0, startOdo: 0, rating: 5, quip: 12, earned: 0, rides: 0 };
 
@@ -132,7 +135,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
   const mg = world.stations.find((s) => s.elevated);
   if (mg) COL.push({ x: mg.ex + 2, z: mg.ez + 2, e: 'metro', t: 'Namma Metro', b: 'Beat the traffic. Take the purple line. Stand on the right.' });
   if (world.vidhana) COL.push({ x: world.vidhana.fx, z: world.vidhana.fz, e: 'landmark', t: "Government Work is God's Work", b: 'It is literally carved on the building: ಸರ್ಕಾರದ ಕೆಲಸ ದೇವರ ಕೆಲಸ. Look up!' });
-  if (world.ubc) COL.push({ ...curb(world.ubc.x, world.ubc.z), e: 'city', t: 'UB City', b: 'Where Bengaluru goes to look at things it cannot afford.' });
+  if (world.ubc) COL.push({ ...curb(world.ubc.x, world.ubc.z), e: 'city', t: 'UV City', b: 'Where Bengaluru goes to look at things it cannot afford.' });
 
   const glowTex = glow();
   const items = COL.map((c) => {
@@ -284,7 +287,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
   }
   function walkPickup() {
     const G = WALK[ride.sub], f = ride.from;
-    const pool = ride.sub === 'deliver' ? HOMES : SPOTS.filter((p) => /Vidhana|UB City|Chinnaswamy|Church|Brigade/.test(p.name));
+    const pool = ride.sub === 'deliver' ? HOMES : SPOTS.filter((p) => /Vidhana|UV City|Chinnaswamy|Church|Brigade|100 Feet|80 Feet/.test(p.name));
     const c = pool.filter((p) => dist(p, f) > (ride.sub === 'deliver' ? 150 : 250) && dist(p, f) < (ride.sub === 'deliver' ? 450 : 1100));
     ride.to = ride.sub === 'deliver' || ride.sub === 'tourist' ? pick(c.length ? c : pool) : f;
     ride.state = 'riding'; ride.rating = 5; ride.quip = 12; ride.elapsed = 0; ride.peaks = 0;

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { makeRng, part, box, merge, clamp } from './util.js';
 import { Batch, WHITE, toPts, polyArea, centroid, bbox, pip, segDist, triangulate, Grid } from './geom.js';
 import * as T from './textures.js';
+import { createNamer, genericSigns, poiParody, parodyOf } from './names.js';
 
 // Built from OpenStreetMap data (© OpenStreetMap contributors, ODbL) via tools/osm2game.py
 // the playable area comes from the map data (tools/tile_map.py writes it); this is only the fallback for old data
@@ -26,12 +27,11 @@ export const KN = {
 export const ZONES = {
   stadium: { name: 'M. Chinnaswamy Stadium', kn: 'ಚಿನ್ನಸ್ವಾಮಿ ಕ್ರೀಡಾಂಗಣ' },
   vidhana: { name: 'Vidhana Soudha', kn: 'ವಿಧಾನ ಸೌಧ' },
-  ubc: { name: 'UB City', kn: 'ಯುಬಿ ಸಿಟಿ' },
+  ubc: { name: 'UV City', kn: 'ಯುವಿ ಸಿಟಿ' },
   cubbon: { name: 'Cubbon Park', kn: 'ಕಬ್ಬನ್ ಉದ್ಯಾನವನ' },
   central: { name: 'Central Bengaluru', kn: 'ಬೆಂಗಳೂರು' },
 };
 
-const ENTER_SIGNS = { 0: 'darshini', 1: 'darshini', 2: 'cafe', 3: 'bakery', 6: 'darshini', 7: 'darshini', 8: 'pub', 10: 'darshini', 12: 'cafe' };
 function themeFor(p) {
   const n = p.n.toLowerCase();
   if (p.a === 'pub' || p.a === 'bar') return 'pub';
@@ -69,6 +69,8 @@ export function buildWorld(scene, data, opts = {}) {
 
   // ---------- materials ----------
   const fa = T.facade(), fb = T.facadeB(), cur = T.curtain(), glowTex = T.glow();
+  // parody names: one generator for the whole map, so no two places share a name (src/names.js)
+  const namer = createNamer(1729), SIGNS = genericSigns(T.SIGNS, namer);
   const M = {
     ground: new THREE.MeshStandardMaterial({ map: T.dirt(), roughness: 1 }),
     side: new THREE.MeshStandardMaterial({ map: T.pavers(), roughness: 0.95 }),
@@ -85,7 +87,7 @@ export function buildWorld(scene, data, opts = {}) {
     landmark: new THREE.MeshStandardMaterial({ map: fa.map, vertexColors: true, roughness: 0.8, emissive: '#ffb36b', emissiveIntensity: 0 }),
     concrete: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }),
     shop: new THREE.MeshStandardMaterial({ color: '#2b3138', emissive: '#ffd59a', emissiveIntensity: 0.05, roughness: 0.25, metalness: 0.2 }),
-    sign: new THREE.MeshStandardMaterial({ map: T.signAtlas(), emissive: '#ffffff', emissiveIntensity: 0.1, roughness: 0.6 }),
+    sign: new THREE.MeshStandardMaterial({ map: T.signAtlas(SIGNS), emissive: '#ffffff', emissiveIntensity: 0.1, roughness: 0.6 }),
     poiSign: null,
     billboard: new THREE.MeshStandardMaterial({ map: T.billboardAtlas(), emissive: '#ffffff', emissiveIntensity: 0.1, roughness: 0.6 }),
     lampHead: new THREE.MeshBasicMaterial({ color: '#666' }),
@@ -362,7 +364,7 @@ export function buildWorld(scene, data, opts = {}) {
     const h = d.h;
     extrude(key, pts, h, color, style === 'glass' ? { tw: 24, th: 28, off: r, glass: true } : { off: Math.floor(r * 16) / 16 });
     const bb = bbox(pts);
-    const bld = { pts, h, style, name: d.n, cx, cz, ...bb, area: Math.abs(polyArea(pts)) };
+    const bld = { pts, h, style, name: d.n && (parodyOf(d.n) || d.n), cx, cz, ...bb, area: Math.abs(polyArea(pts)) };
     buildings.push(bld);
     addPoly(pts, h);
     // roof clutter: black Sintex tanks, stair rooms, church spires
@@ -403,17 +405,22 @@ export function buildWorld(scene, data, opts = {}) {
   const candGrid = new Grid(40);
   shopCands.forEach((c) => candGrid.add(c, c.mx, c.mx, c.mz, c.mz));
   const cq = [];
-  for (const p of data.pois) {
-    if (!FOOD.has(p.a) || !inB(p.x, p.z) || poiList.length >= 64) continue;
+  // a seeded shuffle, so the signed places spread over the whole map instead of filling the first tiles
+  const poiOrder = data.pois.filter((p) => FOOD.has(p.a) && inB(p.x, p.z));
+  { const pr = makeRng(4242); for (let i = poiOrder.length - 1; i > 0; i--) { const j = Math.floor(pr() * (i + 1)); [poiOrder[i], poiOrder[j]] = [poiOrder[j], poiOrder[i]]; } }
+  for (const p of poiOrder) {
+    if (poiList.length >= T.POI_COLS * T.POI_ROWS) break;
     candGrid.query(p.x, p.z, 30, cq);
     let best = null;
     for (const c of cq) { if (c.poi) continue; const d = Math.hypot(c.mx - p.x, c.mz - p.z); if (d < 30 && (!best || d < best.d)) best = { c, d }; }
-    if (best) { best.c.poi = p; best.c.poiIdx = poiList.length; poiList.push(p); }
+    if (best) { best.c.poi = p; best.c.poiIdx = poiList.length; poiList.push(p); p.pn = poiParody(p, namer); }
   }
   M.poiSign = new THREE.MeshStandardMaterial({ map: T.poiSignAtlas(poiList), emissive: '#ffffff', emissiveIntensity: 0.1, roughness: 0.6 });
   M.poiSign.emissiveMap = M.poiSign.map;
 
   const doors = [];
+  const doorGrid = new Grid(250), dq = [];
+  const sameNear = (idx, x, z) => { doorGrid.query(x, z, 500, dq); return dq.some((d) => d.idx === idx && Math.hypot(d.x - x, d.z - z) < 500); };
   const frame = new THREE.Matrix4(), vX = new THREE.Vector3(), vY = new THREE.Vector3(0, 1, 0), vZ = new THREE.Vector3();
   const awningCols = ['#2e7d32', '#1565c0', '#c62828', '#f9a825', '#6a1b9a', '#00838f'];
   let billboards = 0;
@@ -421,8 +428,16 @@ export function buildWorld(scene, data, opts = {}) {
     const { len, ex, ez, nx, nz, mx, mz, bld } = c;
     // decided now (doors are game logic); drawn later by the chunk
     let theme = null, name = null, idx = -1;
-    if (c.poi) { theme = themeFor(c.poi); name = c.poi.n; }
-    else { idx = rng.int(0, 14); if (ENTER_SIGNS[idx] && rng() < 0.2) { theme = ENTER_SIGNS[idx]; name = titleCase(T.SIGNS[idx][0]); } }
+    if (c.poi) { theme = themeFor(c.poi); name = c.poi.pn; }
+    else {
+      const pickSign = () => { const i = rng.int(0, SIGNS.length - 2); return i >= T.METRO_SIGN ? i + 1 : i; }; // the metro sign is for stations only
+      idx = pickSign();
+      if (SIGNS[idx][4] && rng() < 0.2) {
+        // a place you can walk into: no other door within 500 m has the same name
+        for (let k = 0; k < 16 && (!SIGNS[idx][4] || sameNear(idx, mx, mz)); k++) idx = pickSign();
+        if (SIGNS[idx][4]) { theme = SIGNS[idx][4]; name = idx < T.SIGNS.length ? titleCase(SIGNS[idx][0]) : SIGNS[idx][0]; doorGrid.add({ idx, x: mx, z: mz }, mx, mx, mz, mz); }
+      }
+    }
     if (theme) doors.push({ x: mx + nx * 1.2, z: mz + nz * 1.2, nx, nz, name, theme, road: c.road.n });
     const awning = rng() < 0.45 ? rng.pick(awningCols) : null;
     const board = bld.h > 12 && bld.h < 40 && MAJOR.has(c.road.k) && billboards < 40 && rng() < 0.18 ? rng.int(0, 3) : -1;
@@ -436,11 +451,11 @@ export function buildWorld(scene, data, opts = {}) {
       const sg = new THREE.PlaneGeometry(sw, 1.5);
       const uv = sg.attributes.uv;
       if (c.poi) {
-        const i = c.poiIdx, u0 = (i % 4) * 0.25, v0 = 1 - (Math.floor(i / 4) + 1) / 16;
-        for (let k = 0; k < uv.count; k++) uv.setXY(k, u0 + uv.getX(k) * 0.25, v0 + uv.getY(k) / 16);
+        const i = c.poiIdx, cu = 1 / T.POI_COLS, cv = 1 / T.POI_ROWS, u0 = (i % T.POI_COLS) * cu, v0 = 1 - (Math.floor(i / T.POI_COLS) + 1) * cv;
+        for (let k = 0; k < uv.count; k++) uv.setXY(k, u0 + uv.getX(k) * cu, v0 + uv.getY(k) * cv);
       } else {
-        const u0 = (idx % 2) * 0.5, v0 = 1 - (Math.floor(idx / 2) + 1) * 0.125;
-        for (let k = 0; k < uv.count; k++) uv.setXY(k, u0 + uv.getX(k) * 0.5, v0 + uv.getY(k) * 0.125);
+        const cu = 1 / T.SIGN_COLS, cv = 1 / T.SIGN_ROWS, u0 = (idx % T.SIGN_COLS) * cu, v0 = 1 - (Math.floor(idx / T.SIGN_COLS) + 1) * cv;
+        for (let k = 0; k < uv.count; k++) uv.setXY(k, u0 + uv.getX(k) * cu, v0 + uv.getY(k) * cv);
       }
       sg.translate(0, 4.3, 0.53); sg.applyMatrix4(frame);
       B(c.poi ? 'poiSign' : 'sign').addGeo(part(sg, '#fff'));
