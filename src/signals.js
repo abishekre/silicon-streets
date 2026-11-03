@@ -74,7 +74,7 @@ export function createSignals(scene, world) {
     g.applyMatrix4(m); poleParts.push(g);
     for (let k = 0; k < 4; k++) lamps.push({ s, e, k, pos: new THREE.Vector3(0, 3.95 - k * 0.32, 0.15).applyMatrix4(m), hd: Math.atan2(e.dx, e.dz) });
   }
-  if (poleParts.length) { const pm = new THREE.Mesh(merge(poleParts), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 })); pm.castShadow = true; scene.add(pm); }
+  world.addStatic('concrete', poleParts); // streams and culls with the map chunks
   const lampMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.11, 8, 6), new THREE.MeshBasicMaterial(), Math.max(1, lamps.length));
   const m4 = new THREE.Matrix4();
   lamps.forEach((l, i) => { m4.makeTranslation(l.pos.x, l.pos.y, l.pos.z); lampMesh.setMatrixAt(i, m4); lampMesh.setColorAt(i, new THREE.Color(0.1, 0.1, 0.1)); });

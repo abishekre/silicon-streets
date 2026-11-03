@@ -105,7 +105,7 @@ export function buildWorld(scene, data) {
   M.grass.polygonOffset = true; M.grass.polygonOffsetFactor = 1.5; M.grass.polygonOffsetUnits = 1.5;
 
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(3000, 2100).rotateX(-Math.PI / 2), M.ground);
-  ground.receiveShadow = true; scene.add(ground);
+  ground.receiveShadow = true; ground.renderOrder = 6; scene.add(ground); // drawn after everything that covers it
 
   // ---------- collision ----------
   const grid = new Grid(24);
@@ -831,7 +831,10 @@ export function buildWorld(scene, data) {
 
   // ---------- build chunk meshes ----------
   const CAST = new Set(['bldA', 'bldB', 'glass', 'landmark', 'concrete', 'prop']);
-  const ORDER = { puddle: 2 };
+  // draw order (opaque): buildings and props first, then the flat ground layers from the top down, so each lower layer
+  // (pushed back by polygonOffset) fails the depth test instead of being shaded again under the one above it.
+  // About a third of the scene pass on integrated graphics, with no visible change.
+  const ORDER = { marking: 1, kerb: 1, pothole: 1, road: 2, plaza: 3, path: 3, water: 3, side: 4, grass: 5, puddle: 2 };
   const trunkG = new THREE.CylinderGeometry(0.22, 0.38, 1, 6).translate(0, 0.5, 0);
   const canopyG = merge([[0, 0, 0, 1.8], [1.1, -0.3, 0.4, 1.3], [-0.9, -0.2, -0.6, 1.4]].map(([x, y, z, r]) => { const g = new THREE.IcosahedronGeometry(r, 0); g.scale(1.3, 0.75, 1.3); g.translate(x, y, z); return part(g, '#fff'); }));
   // far-away trees swap to a single blob (20 instead of 60 triangles)
@@ -846,11 +849,11 @@ export function buildWorld(scene, data) {
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), cc = new THREE.Color(), one = new THREE.Vector3(1, 1, 1), pv = new THREE.Vector3(), sv = new THREE.Vector3();
   // roads, buildings, kerbs…: one BatchedMesh per material for the whole map (a single multi-draw call each).
   // Each loaded chunk adds its piece; dropping a chunk frees it, and the buffer is compacted or grown as needed.
-  const pools = {}, slots = chunks.size + 4, layout = (() => { const t = new Batch(); t.triUp([0, 0], [1, 0], [0, 1], 0, 1); return t.build(); })();
+  const pools = {}, layout = (() => { const t = new Batch(); t.triUp([0, 0], [1, 0], [0, 1], 0, 1); return t.build(); })();
   function pool(key, need) {
     let bm = pools[key];
     if (!bm) {
-      bm = pools[key] = new THREE.BatchedMesh(slots, Math.max(need * 2, 1 << 12), 0, M[key]);
+      bm = pools[key] = new THREE.BatchedMesh(chunks.size + 8, Math.max(need * 2, 1 << 12), 0, M[key]); // one slot per chunk (all chunks exist by prime())
       bm.castShadow = CAST.has(key); bm.receiveShadow = !DETAIL.has(key) || key === 'prop'; bm.renderOrder = ORDER[key] || 0;
       bm.sortObjects = !!M[key].transparent; bm.frustumCulled = false;
       bm._initializeGeometry(layout); // set up the attributes now, so an empty pool can still compile its shader
@@ -877,8 +880,8 @@ export function buildWorld(scene, data) {
     bc = null;
     if (c.opI < c.ops.length) { cr = rng; c.ms += performance.now() - t0; return false; }
     c.ms += performance.now() - t0; t0 = performance.now();
-    const base = [], det = [], lod = [];
-    const entry = { x: c.x, z: c.z, r: CH * 0.72, lod, far: null, bat: [] };
+    const base = [], det = [], ins = [];
+    const entry = { x: c.x, z: c.z, r: CH * 0.72, ins, far: null, bat: [] };
     for (const key in c.b) {
       if (c.b[key].empty) continue;
       const geo = c.b[key].build(), bm = pool(key, geo.attributes.position.count);
@@ -886,33 +889,21 @@ export function buildWorld(scene, data) {
       entry.bat.push({ bm, gid, id: bm.addInstance(gid), det: DETAIL.has(key), vis: true }); geo.dispose();
     }
     c.b = null; bc = null;
-    if (c.trees.length) {
-      const tr = new THREE.InstancedMesh(trunkG, M.trunk, c.trees.length), ca = new THREE.InstancedMesh(canopyG, M.canopy, c.trees.length);
-      c.trees.forEach((t, i) => {
-        const th = (t.park ? 3.4 : 2.6) * t.s; q.setFromAxisAngle(vY, cr() * 6.28);
-        m4.compose(pv.set(t.x, 0, t.z), q, sv.set(t.s, th, t.s)); tr.setMatrixAt(i, m4);
-        m4.compose(pv.set(t.x, th + 0.6 * t.s, t.z), q, sv.set(t.s * 1.25, t.s * 1.1, t.s * 1.25)); ca.setMatrixAt(i, m4);
-        ca.setColorAt(i, cc.set(t.col));
-      });
-      tr.castShadow = ca.castShadow = true; ca.receiveShadow = true; tr.computeBoundingSphere(); ca.computeBoundingSphere();
-      base.push(tr, ca); lod.push({ m: ca, hi: canopyG, lo: canopyLo }, { m: tr, hi: trunkG, lo: trunkLo });
+    // trees, lamps and bulbs go into the map-wide kits (one draw call per kind, not per chunk)
+    const put = (K, det = false, lod = false, col = null) => { const id = K.bm.addInstance(K.ids[0]); K.bm.setMatrixAt(id, m4); if (col) K.bm.setColorAt(id, col); ins.push({ K, id, det, lod, vis: true }); };
+    for (const t of c.trees) {
+      const th = (t.park ? 3.4 : 2.6) * t.s; q.setFromAxisAngle(vY, cr() * 6.28);
+      m4.compose(pv.set(t.x, 0, t.z), q, sv.set(t.s, th, t.s)); put(kit.trunk, false, true);
+      m4.compose(pv.set(t.x, th + 0.6 * t.s, t.z), q, sv.set(t.s * 1.25, t.s * 1.1, t.s * 1.25)); put(kit.canopy, false, true, cc.set(t.col));
     }
     cr = rng;
-    if (c.lamps.length) {
-      const po = new THREE.InstancedMesh(poleG, M.pole, c.lamps.length), he = new THREE.InstancedMesh(headG, M.lampHead, c.lamps.length), pl = new THREE.InstancedMesh(poolG, M.pool, c.lamps.length);
-      c.lamps.forEach((l, i) => {
-        q.setFromAxisAngle(vY, Math.atan2(l.dx, l.dz));
-        m4.compose(pv.set(l.x, 0, l.z), q, one); po.setMatrixAt(i, m4); he.setMatrixAt(i, m4);
-        m4.compose(pv.set(l.x + l.dx * 2.6, 0.09, l.z + l.dz * 2.6), q, one); pl.setMatrixAt(i, m4);
-      });
-      po.castShadow = true; pl.renderOrder = 3; po.computeBoundingSphere(); he.computeBoundingSphere(); pl.computeBoundingSphere();
-      det.push(po); base.push(he, pl);
+    for (const l of c.lamps) {
+      q.setFromAxisAngle(vY, Math.atan2(l.dx, l.dz));
+      m4.compose(pv.set(l.x, 0, l.z), q, one); put(kit.pole, true); put(kit.head);
+      m4.compose(pv.set(l.x + l.dx * 2.6, 0.09, l.z + l.dz * 2.6), q, one); put(kit.pool);
     }
     if (c.cables.length) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(c.cables, 3)); det.push(new THREE.LineSegments(g, M.cable)); }
-    if (c.bulbs.length) {
-      const bm = new THREE.InstancedMesh(bulbG, M.bulb, c.bulbs.length);
-      c.bulbs.forEach(([x, y, z], i) => { m4.makeTranslation(x, y, z); bm.setMatrixAt(i, m4); }); bm.computeBoundingSphere(); base.push(bm);
-    }
+    for (const [x, y, z] of c.bulbs) { m4.makeTranslation(x, y, z); put(kit.bulb); }
     const grp = new THREE.Group(); if (base.length) grp.add(...base); scene.add(grp);
     const dg = new THREE.Group(); if (det.length) dg.add(...det); scene.add(dg);
     entry.m = grp; entry.det = dg; cull.push(entry); c.live = entry;
@@ -923,11 +914,13 @@ export function buildWorld(scene, data) {
   function dropChunk(c) {
     const e = c.live; c.live = null;
     for (const b of e.bat) b.bm.deleteGeometry(b.gid);
+    for (const b of e.ins) b.K.bm.deleteInstance(b.id);
     for (const g of [e.m, e.det]) { scene.remove(g); for (const o of g.children) o.isInstancedMesh ? o.dispose() : o.geometry.dispose(); }
     cull.splice(cull.indexOf(e), 1);
   }
   // ---------- streaming: build the chunks around the camera, drop the ones far behind ----------
-  const streamed = [...chunks.values()].filter((c) => c.ops.length || c.trees.length || c.lamps.length || c.cables.length || c.bulbs.length);
+  // the chunks with anything in them; worked out at prime(), after other modules have added their scenery
+  let streamed = [];
   const queue = [];
   let scanT = 0;
   const loadR = (far) => far + 60 + CH * 0.72;
@@ -952,13 +945,40 @@ export function buildWorld(scene, data) {
       if (!urgent && performance.now() > until) break;
     }
   }
+  // trees, lamps, light pools and bulbs: one BatchedMesh per kind for the whole map (sized for every one of them),
+  // instead of 6–7 instanced meshes per chunk. Chunks add their instances when they load and remove them when dropped.
+  let kit = null;
+  function makeKits() {
+    let nT = 0, nL = 0, nB = 0;
+    for (const c of streamed) { nT += c.trees.length; nL += c.lamps.length; nB += c.bulbs.length; }
+    const mk = (geos, mat, n, o = {}) => {
+      let nv = 0, ni = 0; for (const g of geos) { nv += g.attributes.position.count; ni += g.index ? g.index.count : 0; }
+      const bm = new THREE.BatchedMesh(Math.max(1, n), nv, ni, mat), ids = geos.map((g) => bm.addGeometry(g));
+      bm.castShadow = !!o.cast; bm.receiveShadow = !!o.receive; bm.renderOrder = o.order || 0; bm.sortObjects = !!mat.transparent; bm.frustumCulled = false;
+      scene.add(bm); return { bm, ids };
+    };
+    kit = {
+      trunk: mk([trunkG, trunkLo], M.trunk, nT, { cast: true }), canopy: mk([canopyG, canopyLo], M.canopy, nT, { cast: true, receive: true }),
+      pole: mk([poleG], M.pole, nL, { cast: true }), head: mk([headG], M.lampHead, nL), pool: mk([poolG], M.pool, nL, { order: 3 }), bulb: mk([bulbG], M.bulb, nB),
+    };
+  }
+  // other modules hand their static scenery (barricades, bus shelters, signal poles…) to the map, so it is built,
+  // drawn and dropped per chunk like everything else instead of being one map-wide mesh that is always drawn.
+  // key: an existing material key, or a new one with its own material ({ material, cast })
+  const extraKeys = new Set(), bb = new THREE.Box3(), bc3 = new THREE.Vector3();
+  function addStatic(key, geos, opts = {}) {
+    if (!M[key]) { M[key] = opts.material; if (opts.cast) CAST.add(key); }
+    extraKeys.add(key);
+    for (const g of geos) { bb.setFromBufferAttribute(g.attributes.position).getCenter(bc3); keep(key, bc3.x, bc3.z, g); }
+  }
   // before the first frame: everything in view of the start point, plus an empty mesh of every kind
   // so all shaders compile on the loading screen instead of stuttering when a new kind first comes into view
   function prime(x, z, far) {
+    streamed = [...chunks.values()].filter((c) => c.ops.length || c.trees.length || c.lamps.length || c.cables.length || c.bulbs.length);
+    makeKits();
     for (const c of streamed) if (!c.live && Math.hypot(c.x - x, c.z - z) < loadR(far)) buildChunk(c);
-    for (const key of ['side', 'road', 'path', 'grass', 'water', 'plaza', 'marking', 'kerb', 'bldA', 'bldB', 'glass', 'landmark', 'concrete', 'shop', 'sign', 'poiSign', 'billboard', 'pothole', 'puddle', 'prop']) pool(key, 0);
+    for (const key of ['side', 'road', 'path', 'grass', 'water', 'plaza', 'marking', 'kerb', 'bldA', 'bldB', 'glass', 'landmark', 'concrete', 'shop', 'sign', 'poiSign', 'billboard', 'pothole', 'puddle', 'prop', ...extraKeys]) pool(key, 0);
     const warm = new THREE.Group();
-    for (const [g, m] of [[trunkG, M.trunk], [canopyG, M.canopy], [poleG, M.pole], [headG, M.lampHead], [poolG, M.pool], [bulbG, M.bulb]]) { const im = new THREE.InstancedMesh(g, m, 1); im.count = 0; im.frustumCulled = false; warm.add(im); }
     const lines = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute([0, -99, 0, 0, -99, 0], 3)), M.cable); lines.frustumCulled = false; warm.add(lines);
     scene.add(warm);
     scanT = 0;
@@ -1088,11 +1108,16 @@ export function buildWorld(scene, data) {
     c.m.visible = vis;
     if (c.det) c.det.visible = dvis;
     if (c.bat) for (const b of c.bat) { const on = b.det ? dvis : vis; if (on !== b.vis) { b.vis = on; b.bm.setVisibleAt(b.id, on); } }
-    if (c.lod) { const isFar = d > v.lodR + c.r * 0.5; if (isFar !== c.far) { c.far = isFar; for (const l of c.lod) l.m.geometry = isFar ? l.lo : l.hi; } }
+    if (c.ins) {
+      for (const b of c.ins) { const on = b.det ? dvis : vis; if (on !== b.vis) { b.vis = on; b.K.bm.setVisibleAt(b.id, on); } }
+      // far trees swap to the low-detail shape
+      const isFar = d > v.lodR + c.r * 0.5;
+      if (isFar !== c.far) { c.far = isFar; for (const b of c.ins) if (b.lod) b.K.bm.setGeometryIdAt(b.id, b.K.ids[isFar ? 1 : 0]); }
+    }
   }
 
   return {
-    items: (x, z, r, out) => grid.query(x, z, r, out), prime,
+    items: (x, z, r, out) => grid.query(x, z, r, out), prime, addStatic,
     get streamInfo() { return { live: streamed.filter((c) => c.live).length, total: streamed.length, queued: queue.length, buildMs, finMs }; },
     collide, solidAt, surfaceAt, zoneAt, update, nearestRoad, insideBuilding, addPoly, addCircle, segGrid, nodes, junctionR, groundAt, inside, ladders, vidhanaTop,
     potholes, buildings, roads, parks, cubbon, vidhana, stadium, ubc, stations: kiosks, doors, vendors, benches, tracks,

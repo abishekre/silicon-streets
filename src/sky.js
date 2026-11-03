@@ -73,7 +73,7 @@ export function createSky() {
   };
   const mat = new THREE.ShaderMaterial({ uniforms, vertexShader: vert, fragmentShader: frag, side: THREE.BackSide, depthWrite: false, fog: false });
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(1000, 32, 16), mat);
-  mesh.frustumCulled = false; mesh.renderOrder = -10;
+  mesh.frustumCulled = false; mesh.renderOrder = 100; // last, depth-tested: only the pixels where sky actually shows get shaded
   const envMesh = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), mat);
   const envScene = new THREE.Scene(); envScene.add(envMesh);
   return { mesh, uniforms, envScene };

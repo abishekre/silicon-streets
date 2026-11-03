@@ -286,13 +286,22 @@ export function createTraffic(scene, world, audio) {
   const inst = {};
   const counts = {};
   for (const [k, p] of MIX) counts[k] = Math.round(N * p);
+  // two detail levels: the full model within NEAR_D of you, a two-box stand-in (24 triangles instead of ~1000) beyond.
+  // Every frame present() packs only the vehicles in view into these, so nothing behind the camera is drawn.
+  const NEAR_D = 45;
+  const lowModel = (geo) => {
+    geo.computeBoundingBox(); const b = geo.boundingBox, w = b.max.x - b.min.x, h = b.max.y - b.min.y, l = b.max.z - b.min.z, cz = (b.max.z + b.min.z) / 2;
+    return merge([box(w, h * 0.55, l, 0, b.min.y + h * 0.275, cz, '#ffffff'), box(w * 0.86, h * 0.45, l * 0.55, 0, b.min.y + h * 0.775, cz - l * 0.05, '#3a4048')]);
+  };
   for (const k of Object.keys(types)) {
-    const body = new THREE.InstancedMesh(bakeWheels(types[k]), bodyMat, counts[k]);
+    const g = bakeWheels(types[k]);
+    const body = new THREE.InstancedMesh(g, bodyMat, counts[k]), far = new THREE.InstancedMesh(lowModel(g), bodyMat, counts[k]);
     const lights = new THREE.InstancedMesh(types[k].lights, lightMat, counts[k]);
-    body.castShadow = true;
-    body.boundingSphere = lights.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 300);
-    scene.add(body, lights);
-    inst[k] = { body, lights };
+    body.castShadow = far.castShadow = true;
+    body.boundingSphere = far.boundingSphere = lights.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 300);
+    body.count = far.count = lights.count = 0;
+    scene.add(body, far, lights);
+    inst[k] = { body, far, lights };
   }
   const carCols = ['#f5f5f5', '#f5f5f5', '#b0b4b8', '#c62828', '#263238', '#1e88e5', '#f2f2f2', '#8d6e63', '#9e9e9e'];
   const scootCols = ['#e53935', '#fdd835', '#43a047', '#1e88e5', '#fafafa', '#212121', '#ff7043'];
@@ -315,12 +324,12 @@ export function createTraffic(scene, world, audio) {
   const GAP0 = { scooter: 0.8, auto: 1.1, car: 2.2, taxi: 1.9, suv: 2.4, bus: 3 };
   for (const k of Object.keys(counts)) for (let i = 0; i < counts[k]; i++) {
     const col = new THREE.Color(k === 'car' || k === 'suv' ? rng.pick(carCols) : k === 'scooter' ? rng.pick(scootCols) : '#ffffff');
-    inst[k].body.setColorAt(i, col);
+    inst[k].body.setColorAt(i, col); inst[k].far.setColorAt(i, col);
     const max = k === 'bus' ? rng.range(8, 9.5) : k === 'auto' ? rng.range(8.5, 11) : k === 'scooter' ? rng.range(11, 14.5) : rng.range(10.5, 14);
     const sh = SHAPE(k);
     // every field up front, in one order: one hidden class for the whole fleet keeps the hot loop fast
     vehicles.push({ type: k, idx: i, id: 0, off: false, e: 0, s: 0, lat: 0, li: 0, speed: 0, max, x: 1e6, z: 1e6, fx: 1, fz: 0, yaw: 0, steer: 0, honkCd: rng.range(2, 8), r: sh.r, long: sh.long,
-      mass: MASS[k], hw: HALF[k], pref: Math.floor(rng() * 3), route: [], ri: 0, nx: -1, pe: -1, pl: 0, pr: 0, inJ: -1, jE: -1, jN: -1, jl: 0, turn: 'S', eta: 0,
+      col, hidden: false, mass: MASS[k], hw: HALF[k], pref: Math.floor(rng() * 3), route: [], ri: 0, nx: -1, pe: -1, pl: 0, pr: 0, inJ: -1, jE: -1, jN: -1, jl: 0, turn: 'S', eta: 0,
       mp: new Float64Array(14), ind: 0, indT: 0, filter: 0, park: 0, wait: 0, stuckT: 0, knockT: 0, kx: 0, kz: 0, kyaw: 0, dazed: 0, greenT: 0, red: false,
       ox: 0, oz: 0, squeeze: 0, blk: -1, ld: -1, backT: 0, blockT: 0, rec: 0, redraw: false, retry: 0, retryRoute: 0, hk: -1, hl: null, needRoute: true, loop: null, stop: 0, dest: -1 });
   }
@@ -574,7 +583,7 @@ export function createTraffic(scene, world, audio) {
       for (const o of near(vh, sx, sz, spawnNb)) if (o !== v && !o.off && gap2(sx, sz, e.dx, e.dz, v.long, v.r, o.x, o.z, o.fx, o.fz, o.long, o.r) < 3) { ok = false; break; }
       if (ok) for (const o of near(ph, sx, sz, spawnNb)) if (hyp(o.x - sx, o.z - sz) < 6) { ok = false; break; }
       if (!ok) continue;
-      reset(v);
+      reset(v); v.hidden = false;
       v.e = c.i; v.s = s; v.li = li; v.lat = lat; v.speed = v.max * 0.5;
       v.x = sx; v.z = sz; v.fx = e.dx; v.fz = e.dz; v.yaw = sy; v.retry = 0;
       hmove(v); // visible to the next spawn this frame
@@ -716,11 +725,8 @@ export function createTraffic(scene, world, audio) {
   const zero = new THREE.Vector3(0, 0, 0), hide = new THREE.Matrix4().compose(new THREE.Vector3(0, -50, 0), new THREE.Quaternion(), zero);
   const stopProfile = (d) => d <= 0.25 ? 0 : Math.sqrt(9 * (d - 0.25));
   function draw(v) {
-    const I = inst[v.type];
-    // the body leans into lane changes a touch
+    // (the body itself is placed by present(), once per frame)
     q.setFromAxisAngle(up, v.yaw + v.steer);
-    m.compose(pv.set(v.x, 0, v.z), q, one);
-    I.body.setMatrixAt(v.idx, m); I.lights.setMatrixAt(v.idx, m);
     m.compose(pv.set(v.x + v.fx * (5.5 + v.long), 0.1, v.z + v.fz * (5.5 + v.long)), q, one); beams.setMatrixAt(v.id, m);
     if (v.ind && (now * 2.6) % 1 < 0.55) {
       const sx = v.fz * v.ind * v.hw, sz = -v.fx * v.ind * v.hw, f = v.long + v.r * 0.8;
@@ -728,8 +734,29 @@ export function createTraffic(scene, world, audio) {
       m.compose(pv.set(v.x + sx - v.fx * f, 0.78, v.z + sz - v.fz * f), q, one); blink.setMatrixAt(v.id * 2 + 1, m);
     } else { blink.setMatrixAt(v.id * 2, hide); blink.setMatrixAt(v.id * 2 + 1, hide); }
   }
-  function hideV(v) { const I0 = inst[v.type]; I0.body.setMatrixAt(v.idx, hide); I0.lights.setMatrixAt(v.idx, hide); beams.setMatrixAt(v.id, hide); blink.setMatrixAt(v.id * 2, hide); blink.setMatrixAt(v.id * 2 + 1, hide); }
+  function hideV(v) { v.hidden = true; beams.setMatrixAt(v.id, hide); blink.setMatrixAt(v.id * 2, hide); blink.setMatrixAt(v.id * 2 + 1, hide); }
 
+  // pack the vehicles you can see into the instance buffers: full model near, stand-in further out, none behind the camera
+  const nN = {}, nF = {}, nL = {};
+  function present(focus) {
+    for (const k in inst) nN[k] = nF[k] = nL[k] = 0;
+    for (const v of vehicles) {
+      if (v.off || v.hidden) continue;
+      const dx = v.x - focus.x, dz = v.z - focus.z, d = Math.hypot(dx, dz);
+      if (d > 25 && dx * (focus.fx || 0) + dz * (focus.fz || 0) < -25) continue;
+      const I = inst[v.type], near = d < NEAR_D, mesh = near ? I.body : I.far, i = near ? nN[v.type]++ : nF[v.type]++;
+      q.setFromAxisAngle(up, v.yaw + v.steer); m.compose(pv.set(v.x, 0, v.z), q, one);
+      mesh.setMatrixAt(i, m); mesh.setColorAt(i, v.col); I.lights.setMatrixAt(nL[v.type]++, m);
+    }
+    for (const k in inst) {
+      const I = inst[k];
+      I.body.count = nN[k]; I.far.count = nF[k]; I.lights.count = nL[k];
+      I.body.instanceMatrix.needsUpdate = I.far.instanceMatrix.needsUpdate = I.lights.instanceMatrix.needsUpdate = true;
+      I.body.instanceColor.needsUpdate = I.far.instanceColor.needsUpdate = true;
+      // one fixed bound around you instead of recomputing it from every instance each frame
+      I.body.boundingSphere.center.set(focus.x, 0, focus.z);
+    }
+  }
   function update(dt, focus, ev) {
     now += dt; frameN++;
     if (focus.fx !== undefined) { fwdX = focus.fx; fwdZ = focus.fz; }
@@ -954,8 +981,7 @@ export function createTraffic(scene, world, audio) {
     // a pass to redraw anything the correction moved (cheap: matrices only)
     for (const v of vehicles) if (v.redraw) { v.redraw = false; if (!v.off) draw(v); }
     beams.instanceMatrix.needsUpdate = blink.instanceMatrix.needsUpdate = true;
-    // one fixed bound around you instead of recomputing it from every instance each frame
-    for (const k of Object.keys(inst)) { const I = inst[k]; I.body.instanceMatrix.needsUpdate = I.lights.instanceMatrix.needsUpdate = true; I.body.boundingSphere.center.set(focus.x, 0, focus.z); }
+    present(focus);
     honkTimer -= dt;
     if (honkTimer <= 0 && audio) {
       honkTimer = 0.6 + Math.random() * 2.4;

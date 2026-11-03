@@ -39,15 +39,16 @@ export function createEdges(scene, world) {
       const m = new THREE.Matrix4().compose(new THREE.Vector3(x, 0, z), new THREE.Quaternion().setFromAxisAngle(vY, yaw), new THREE.Vector3(1, 1, 1));
       const P = [];
       for (let k = -W / 2; k <= W / 2; k += 1.25) {
-        P.push(part(new THREE.CylinderGeometry(0.3, 0.33, 0.95, 10).translate(k, 0.48, 0), '#f06b1d'),
-          part(new THREE.CylinderGeometry(0.315, 0.315, 0.12, 10).translate(k, 0.62, 0), '#ffffff'), part(new THREE.CylinderGeometry(0.325, 0.325, 0.12, 10).translate(k, 0.32, 0), '#ffffff'));
+        // a drum with its two white bands (open-ended band rings: the caps are inside the drum anyway)
+        P.push(part(new THREE.CylinderGeometry(0.3, 0.33, 0.95, 8).translate(k, 0.48, 0), '#f06b1d'),
+          part(new THREE.CylinderGeometry(0.315, 0.315, 0.12, 8, 1, true).translate(k, 0.62, 0), '#ffffff'), part(new THREE.CylinderGeometry(0.325, 0.325, 0.12, 8, 1, true).translate(k, 0.32, 0), '#ffffff'));
       }
       P.push(box(W, 0.12, 0.08, 0, 1.15, 0.4, '#e53935'), box(0.1, 1.2, 0.1, -W / 2, 0.6, 0.4, '#9e9e9e'), box(0.1, 1.2, 0.1, W / 2, 0.6, 0.4, '#9e9e9e'));
       // site container + sand pile behind
       P.push(box(5, 2.6, 2.4, W / 2 + 3, 1.3, 4, '#1565c0'), box(5.1, 0.1, 2.5, W / 2 + 3, 2.65, 4, '#e0e0e0'));
       P.push(part(new THREE.ConeGeometry(2.2, 1.4, 10).translate(-W / 2 - 1, 0.7, 5), '#c9a86a'));
       const g = merge(P); g.applyMatrix4(m); parts.push(g);
-      const s = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.6), signMat); s.position.set(0, 2.2, -0.2); s.rotation.y = Math.PI; s.applyMatrix4(m); signs.push(s);
+      const s = part(new THREE.PlaneGeometry(3.2, 1.6).rotateY(Math.PI).translate(0, 2.2, -0.2), '#ffffff'); s.applyMatrix4(m); signs.push(s);
       const post = box(0.12, 2.2, 0.12, 0, 1.1, -0.15, '#555'); post.applyMatrix4(m); parts.push(post);
       // a worker on a plastic chair, naturally
       if (rng() < 0.5) {
@@ -80,9 +81,10 @@ export function createEdges(scene, world) {
     }
   };
   edgeSeg(R.x1, R.z1, R.x2, R.z1); edgeSeg(R.x2, R.z1, R.x2, R.z2); edgeSeg(R.x2, R.z2, R.x1, R.z2); edgeSeg(R.x1, R.z2, R.x1, R.z1);
-  if (hp.length) { const hm = new THREE.Mesh(merge(hp), new THREE.MeshStandardMaterial({ map: hoard, roughness: 0.8 })); hm.receiveShadow = true; scene.add(hm); }
-  if (parts.length) { const bm = new THREE.Mesh(merge(parts), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 })); bm.castShadow = true; scene.add(bm); }
-  for (const s of signs) scene.add(s);
+  // all of it streams with the map chunks (it used to be one mesh around the whole map, drawn and shadowed everywhere)
+  world.addStatic('hoard', hp, { material: new THREE.MeshStandardMaterial({ map: hoard, roughness: 0.8 }) });
+  world.addStatic('concrete', parts);
+  world.addStatic('edgeSign', signs, { material: signMat });
   // invisible walls along the edge (barricades block roads, hoardings block the rest)
   const T = 1.5;
   world.addPoly([[R.x1 - 50, R.z1 - T], [R.x2 + 50, R.z1 - T], [R.x2 + 50, R.z1 - 60], [R.x1 - 50, R.z1 - 60]].reverse(), 9, 'edge');
@@ -93,7 +95,7 @@ export function createEdges(scene, world) {
   // ---------- distant skyline ring: always on the horizon, never reachable ----------
   const sk = [];
   for (let i = 0; i < 220; i++) {
-    const a = i / 220 * Math.PI * 2 + rng() * 0.02, d = 950 + rng() * 120;
+    const a = i / 220 * Math.PI * 2 + rng() * 0.02, d = 840 + rng() * 110; // inside the sky dome (r 1000), which is drawn after it
     const w = 14 + rng() * 34, h = 18 + Math.pow(rng(), 2) * 120;
     const g = new THREE.BoxGeometry(w, h, w * (0.6 + rng() * 0.6)); g.rotateY(-a); g.translate(Math.cos(a) * d, h / 2 - 4, Math.sin(a) * d);
     sk.push(part(g, '#ffffff'));

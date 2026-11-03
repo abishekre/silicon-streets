@@ -74,7 +74,7 @@ export function createLife(scene, world, ui, audio) {
     }
     stops.push({ x, z }); void yaw;
   }
-  if (shelterParts.length) { const sm = new THREE.Mesh(merge(shelterParts), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 })); sm.castShadow = true; scene.add(sm); }
+  world.addStatic('concrete', shelterParts); // streams and culls with the map chunks
 
   // ---------- RCB match night crowd in the stands ----------
   let crowd = null;
