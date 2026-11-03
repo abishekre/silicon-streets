@@ -35,6 +35,7 @@ import { createVenues } from './venues.js';
 import { createRealism } from './realism.js';
 import { createMissions } from './missions.js';
 import { createHustles } from './hustles.js';
+import { createTravel } from './travel.js';
 import { gpuInfo, createGpuTimer, instrumentPasses, createBenchmark } from './perf.js';
 import { createInput } from './input.js';
 import { createOverlays } from './overlay.js';
@@ -270,7 +271,9 @@ async function init() {
     onNip(d) { game.wallet.energy = Math.max(0, game.wallet.energy - 4); if (state.mode === 'drive' && player.type === 'scooter') { player.steer += (Math.random() - 0.5) * 1.2; player.vel.multiplyScalar(0.92); } ui.toast(`${d.name} nipped at you`, state.mode === 'drive' ? 'Slow down or stop and it will lose interest.' : 'Stop walking and it will back off.', 'paw'); },
     onNearMiss(d) { game.wallet.respect = Math.max(0, game.wallet.respect - 2); ui.toast(`You nearly hit ${d.name}`, 'It jumped clear. The chai stall saw everything.', 'paw'); },
   };
+  const travel = createTravel({ world, game, ui, state, player, walker: W, realism, tow, origin: data.origin, later: () => ({ missions, hustles }) });
   const places = [
+    ...travel.districts,
     garage.place, ...realism.places(), ...(venues.mall ? [{ name: venues.mall.name, x: venues.mall.x, z: venues.mall.z, icon: 'city' }] : []),
     ...world.stations.map((s) => ({ name: `${s.name} Metro`, x: s.ex, z: s.ez, icon: 'metro' })),
     ...(world.vidhana ? [{ name: 'Vidhana Soudha', x: world.vidhana.fx, z: world.vidhana.fz, icon: 'landmark' }] : []),
@@ -298,7 +301,7 @@ async function init() {
   function showMap() {
     const f = state.mode === 'drive' ? player.pos : W.pos;
     ui.openMap({ focus: { x: f.x, z: f.z, heading: state.mode === 'drive' ? player.heading : W.yaw }, markers: game.markers(), route: nav.route, places, search: searchIndex,
-      onPick: (p) => { navTo(p); ui.toast('Route set', `Follow the blue arrows to <b>${p.name}</b>.`, 'pin'); },
+      onPick: (p) => travel.choose(p, { route: (t) => { navTo(t); ui.toast('Route set', `Follow the blue arrows to <b>${t.name}</b>.`, 'pin'); }, done: () => { nav.clear(); pinBeam.visible = false; } }),
       onClear: () => { nav.clear(); pinBeam.visible = false; } });
   }
   ui.sync(state);
@@ -992,7 +995,7 @@ async function init() {
   console.info(`[silicon-streets] shaders ready in ${Math.round(performance.now() - tc)} ms`);
   frame();
   // debug handle for automated checks: __game.step(n) advances n frames synchronously
-  window.__game = { missions, hustles, realism, venues, phone, garage, dogs, sim, state, player, world, actions, weather, camera, keys: input.held, input, overlays, ui, life, audio, renderer, game, W, hooks, traffic, prof, scene, composer, sun, bloom, gtao, quality, get phys() { return phys; }, flood, edges, nav, people, signals, camCtl, tow, step: (n = 1, dt = 1 / 30) => { for (let i = 0; i < n; i++) tick(dt); } };
+  window.__game = { travel, missions, hustles, realism, venues, phone, garage, dogs, sim, state, player, world, actions, weather, camera, keys: input.held, input, overlays, ui, life, audio, renderer, game, W, hooks, traffic, prof, scene, composer, sun, bloom, gtao, quality, get phys() { return phys; }, flood, edges, nav, people, signals, camCtl, tow, step: (n = 1, dt = 1 / 30) => { for (let i = 0; i < n; i++) tick(dt); } };
 }
 
 init().catch((e) => {

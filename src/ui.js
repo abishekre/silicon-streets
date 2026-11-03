@@ -85,7 +85,7 @@ export function createUI(world, actions, input) {
   function menu({ title, kn, items, foot = '' }) {
     const el = $('menu');
     el.innerHTML = `<div class="mh"><div><div class="mt">${title}</div><div class="mk kn">${kn || ''}</div></div><button class="xbtn" aria-label="Close">${icon('close')}</button></div>
-      <div class="mi">${items.map((it, i) => `<button data-i="${i}"><span class="n"><kbd>${i + 1}</kbd> ${it.name}</span><span class="p">${it.price != null ? `₹${it.price}` : ''}</span><span class="d">${it.desc || ''}</span></button>`).join('')}</div>
+      <div class="mi">${items.map((it, i) => `<button data-i="${i}"${it.disabled ? ' class="off"' : ''}><span class="n"><kbd>${i + 1}</kbd> ${it.name}</span><span class="p">${it.price != null ? `₹${it.price}` : ''}</span><span class="d">${it.desc || ''}</span></button>`).join('')}</div>
       <div class="mf">${foot} · <kbd>Esc</kbd> to close</div>`;
     $('menuWrap').classList.add('open'); menuOpen = true;
     api.onOpened && api.onOpened('menu');

@@ -158,6 +158,8 @@ export function createRealism({ world, ui, audio, player, game, hooks }) {
     // street lighting multiplier for the world (power cuts)
     get lightsK() { return power.out ? 0.08 : 1; },
     get fuel() { return fuel[player.type]; },
+    // fast travel: the drive you skipped still uses fuel
+    burn(km) { fuel[player.type] = Math.max(0, fuel[player.type] - km * TANK[player.type].perKm); lastOdo = player.odometer; },
     refuel(pct, cost, label) { W.fine(cost, label); fuel[player.type] = Math.min(100, fuel[player.type] + pct); player.dry = false; },
     markers() { return bunks.map((b) => ({ x: b.x, z: b.z, c: b.cng ? '#26a69a' : '#ff9800', icon: 'F' })); },
     places() { return bunks.map((b) => ({ name: b.name, x: b.x, z: b.z, icon: 'drop' })); },
