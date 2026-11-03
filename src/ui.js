@@ -271,6 +271,7 @@ export function createUI(world, actions, input) {
   }
   $('gDyn').onchange = (e) => actions.toggleDynRes(e.target.checked);
   $('stats').onchange = (e) => actions.toggleStats(e.target.checked);
+  $('benchBtn').onclick = () => actions.runBenchmark();
   // audio: one slider per mixer bus
   const VOL = [['master', 'Master'], ['radio', 'Radio'], ['traffic', 'Traffic'], ['ambience', 'Ambience (rain, crowds, birds)'], ['horn', 'Your horn']];
   const vol = actions.volume();

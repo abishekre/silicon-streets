@@ -27,6 +27,7 @@ import { createTow } from './tow.js';
 import { createBeam } from './people.js';
 import { createAudio } from './audio.js';
 import { createUI } from './ui.js';
+import { gpuInfo, createGpuTimer, instrumentPasses, createBenchmark } from './perf.js';
 import { createInput } from './input.js';
 import { createOverlays } from './overlay.js';
 import { damp, clamp, angleLerp } from './util.js';
@@ -309,6 +310,10 @@ async function init() {
   // anti-aliasing after tone mapping: FXAA (cheap) on Low, SMAA on top of MSAA on Ultra
   const fxaa = new ShaderPass(FXAAShader); composer.addPass(fxaa);
   const smaa = new SMAAPass(innerWidth, innerHeight); composer.addPass(smaa);
+  // GPU time per pass, measured only while the F3 overlay or the benchmark is on
+  const gpu = gpuInfo(renderer), gpuT = createGpuTimer(renderer);
+  let timing = false;
+  instrumentPasses(renderer, composer, gpuT, () => timing);
   function onResize() {
     camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
     const pr = renderer.getPixelRatio(); fxaa.material.uniforms.resolution.value.set(1 / (innerWidth * pr), 1 / (innerHeight * pr));
@@ -717,8 +722,24 @@ async function init() {
     const cpu = Object.keys(P).filter((k) => k !== 'render').reduce((a, k) => a + P[k], 0);
     $('perf').innerHTML = `<b>${ui.fps} fps</b> · <b>${tierCfg().label}</b>${quality.mode === 'auto' ? ' (auto)' : ''} · ${renderer.getPixelRatio().toFixed(2)}× res${quality.dyn < 1 ? ` (dynamic ${Math.round(quality.dyn * 100)}%)` : ''}<br>` +
       `${i.calls} draw calls · ${(i.triangles / 1e6).toFixed(2)}M tris<br>` +
-      `CPU sim ${cpu.toFixed(1)} ms · traffic ${f('traffic')} · people ${f('people')} · ui ${f('ui')}<br>render submit ${f('render')} ms`;
+      `CPU sim ${cpu.toFixed(1)} ms · traffic ${f('traffic')} · people ${f('people')} · ui ${f('ui')}<br>render submit ${f('render')} ms<br>` +
+      `GPU: ${gpu.name}${gpu.integrated ? ' <b>(integrated)</b>' : ''}<br>` +
+      (gpuT.ok ? `GPU ${(gpuT.ms.total || 0).toFixed(1)} ms · ${['shadows', 'scene', 'ao', 'bloom', 'output', 'aa'].filter((k) => gpuT.ms[k] > 0.05).map((k) => `${k} ${gpuT.ms[k].toFixed(1)}`).join(' · ')}` : 'GPU timing not supported by this browser');
   }
+  const bench = createBenchmark({ nav, game, player, actions, state, ui });
+  actions.runBenchmark = () => {
+    if (bench.running) return;
+    if (state.mode !== 'drive') { ui.toast('Benchmark', 'Get in your vehicle first.', 'gauge'); return; }
+    overlays.clear();
+    if (bench.start()) { $('benchOut').textContent = 'Running: 90 s drive with rain and dusk…'; ui.toast('Benchmark running', '90 seconds. Hands off, it drives itself.', 'gauge'); }
+  };
+  function benchDone(r) {
+    const gpuMs = Object.entries(r.gpu).filter(([k, v]) => k !== 'total' && v > 0.05).map(([k, v]) => `${k} ${v.toFixed(1)}`).join(', ');
+    const txt = `${tierCfg().label}: ${r.fps.toFixed(0)} fps average, ${r.low1.toFixed(0)} fps 1% low, worst frame ${r.worst.toFixed(0)} ms · ${Math.round(r.calls)} draw calls · ${(r.tris / 1e6).toFixed(2)}M tris${r.gpu.total ? ` · GPU ${r.gpu.total.toFixed(1)} ms (${gpuMs})` : ''}`;
+    $('benchOut').textContent = txt; console.info('[silicon-streets] benchmark', txt);
+    ui.toast('Benchmark done', `${r.fps.toFixed(0)} fps average, ${r.low1.toFixed(0)} fps 1% low. Details in Settings, Graphics.`, 'gauge');
+  }
+  $('gpuName').textContent = `GPU: ${gpu.name}${gpu.integrated ? ' (integrated graphics. If this computer has a dedicated GPU, set your browser to High performance in Windows Settings, Display, Graphics)' : ''}`;
   // rolling per-system CPU timings (ms), shown in the perf overlay (F3)
   const prof = {}; let pt = 0;
   const mark = (k) => { const n = performance.now(); prof[k] = (prof[k] || 0) * 0.92 + (n - pt) * 0.08; pt = n; };
@@ -768,7 +789,7 @@ async function init() {
     mark('world');
 
     if (!state.photo && !state.paused) {
-      if (state.mode === 'drive') player.update(dt, ctl, world, npcCollide, ev, phys);
+      if (state.mode === 'drive') { if (bench.drive(dt)) player.syncMesh(); else player.update(dt, ctl, world, npcCollide, ev, phys); }
       else { player.syncMesh(); if (state.mode !== 'metro') updateWalker(dt); }
       if (phys) {
         // Rapier moves your vehicle, shoves what you hit, and streams colliders around you
@@ -839,8 +860,11 @@ async function init() {
     frameNo++;
     if (sun.castShadow && frameNo % tierCfg().shadowEvery === 0) renderer.shadowMap.needsUpdate = true;
     renderer.info.reset();
+    timing = quality.stats || bench.running;
     composer.render(); mark('render');
-    autoQuality(rawDt);
+    if (timing) { gpuT.frameEnd(); gpuT.poll(); }
+    const br = bench.sample(rawDt, renderer.info.render, gpuT.ms); if (br) benchDone(br);
+    if (!bench.running) autoQuality(rawDt);
     if (quality.stats && (perfT -= rawDt) <= 0) { perfT = 0.5; drawStats(); }
   }
   applyCfg();

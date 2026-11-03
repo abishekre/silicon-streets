@@ -50,6 +50,7 @@ export const ICONS = {
   battery: ['M3 8h15v8H3z', 'M21 11v2', 'M6 11v2'],
   star: [STAR],
   clock: [c(12, 12, 9), 'M12 7v5l3 2'],
+  gauge: ['M4.9 18a9 9 0 1 1 14.2 0', 'M12 13l4-5', c(12, 13, 1.5)],
   timer: [c(12, 13, 8), 'M12 9v4l2 2', 'M10 2h4'],
   hourglass: ['M6 2h12', 'M6 22h12', 'M7 2v4l5 6-5 6v4', 'M17 2v4l-5 6 5 6v4'],
   check: [c(12, 12, 9), 'M8 12l3 3 5-6'],
