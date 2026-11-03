@@ -43,9 +43,27 @@ const GIGS = {
   },
 };
 
+// On-foot gigs: no vehicle needed (getting into one cancels them). Same job loop, offer card, rings and GPS.
+const WALK = {
+  deliver: { app: 'Swiggly Genie', icon: 'walk', who: 'Customer', word: 'walking delivery', pickLabel: 'collect the parcel', dropLabel: 'hand over the parcel', delivery: true,
+    pay: (d) => 25 + d * 0.08, title: (f) => `Walk a parcel from ${f.name}`,
+    lines: ['Customer (on the phone): "You are walking? Respect, anna."', 'Customer (on the phone): "Gate 2, not Gate 1. Gate 1 is decorative."'],
+    drop: ['Customer: "On foot and still on time. Five stars."', 'Customer: "Here, ₹10 for the shoe leather."'] },
+  tourist: { app: 'Namma Tourist', icon: 'landmark', who: 'Tourist', word: 'guided walk', pickLabel: 'meet the tourist', dropLabel: 'show them the sight',
+    pay: () => 70, title: (f) => `Walk a tourist from ${f.name}`,
+    lines: ['Tourist: "Is it always this green? Where are the 2,000 lakes?"', 'Tourist: "My cab driver said the metro is faster. Is that true?"', 'Tourist: "What is that smell? Oh. Filter coffee. Amazing."', 'Tourist: "Why is that cow at the signal?"'],
+    drop: ['Tourist: "Wow. Worth the walk. Here, for you."', 'Tourist: "Five stars on TripAdvisor, I promise."'] },
+  flyers: { app: 'HustleHQ', icon: 'receipt', who: 'Founder', word: 'flyer run', pickLabel: 'collect the flyers',
+    pay: () => 90, title: (f) => `Hand out startup flyers near ${f.name}`,
+    lines: ['"Another food delivery app? Bro, there are eleven."', '"Is it AI? Then no thanks. Actually, yes, give two."', '"I already have this app. And the other one. And the other one."', '"Will it fix Silk Board? No? Okay, keep it."', '"Super, I will put it with my other 40 flyers."'] },
+  queue: { app: 'QueueForU', icon: 'clock', who: 'Client', word: 'queue shift', pickLabel: 'join the queue',
+    pay: () => 120, title: (f) => `Stand in a queue at ${f.name} for a busy techie`,
+    lines: ['The man in front: "This queue was here before Bengaluru was Bangalore."', 'Someone cuts in. Nobody says anything. Everyone sighs.', 'Your client (on the phone): "Are you near the front? I have a standup in 5."', 'The counter closes for lunch. It reopens. Lunch was 4 minutes.'] },
+};
+
 export const VENDOR_MENUS = {
   elaneer: { title: 'Tender Coconut Cart', kn: 'ಎಳನೀರು', items: [['Elaneer (tender coconut)', 50, 25, 'Three swings of the machete and a straw. Pure Maddur sweetness.']] },
-  chai: { title: 'Chai Cart', kn: 'ಟೀ ಅಂಗಡಿ', items: [['Cutting Chai', 15, 10, 'Ginger, extra sugar, tiny glass.'], ['Bun Maska', 25, 15, 'More butter than bun.']] },
+  chai: { title: 'Chai Cart', kn: 'ಟೀ ಅಂಗಡಿ', items: [['Cutting Chai', 15, 10, 'Ginger, extra sugar, tiny glass.'], ['Bun Maska', 25, 15, 'More butter than bun.'], ['Parle-G (for the dogs)', 10, 0, 'Every street dog knows the sound of this packet.']] },
   corn: { title: 'Bhutta Cart', kn: 'ಜೋಳ', items: [['Roasted Bhutta', 40, 18, 'Lime, chilli, salt, smoke.']] },
   panipuri: { title: 'Chaat Cart', kn: 'ಪಾನಿ ಪುರಿ', items: [['Pani Puri (6)', 40, 15, 'The crunch, the spicy water, the sweet chutney.'], ['Masala Puri', 50, 20, 'Bengaluru special, drowned in hot peas gravy.']] },
   jasmine: { title: 'Flower Seller', kn: 'ಮಲ್ಲಿಗೆ', items: [['Mysore Mallige string', 30, 5, 'The whole street smells of jasmine now.']] },
@@ -54,7 +72,26 @@ export const VENDOR_MENUS = {
 export function createGame(scene, world, people, ui, audio, hooks) {
   const pmesh = createPassengerMesh(scene); pmesh.visible = false;
   const pickBeam = createJobMarker(scene, '#ffd23f', 'Pickup'), dropBeam = createJobMarker(scene, '#3dff8b', 'Drop-off');
-  const wallet = { money: 500, energy: 80, respect: 70 };
+  // money: every rupee in or out goes through earn / spend / fine, so it shows in the money history (and the phone).
+  // Fines you can't pay become dues owed to the Traffic Police; a loan from the garage is repaid out of earnings.
+  const wallet = { money: 500, energy: 80, respect: 70, debt: 0, loan: 0, history: [] };
+  let clock = { hours: 0, day: 0 };
+  const log = (amount, label) => { wallet.history.unshift({ h: clock.hours, d: clock.day, amount: Math.round(amount), label }); if (wallet.history.length > 100) wallet.history.length = 100; };
+  wallet.earn = (amount, label) => {
+    let a = Math.round(amount); log(a, label);
+    // dues first, then half of what's left goes to the loan
+    if (wallet.debt > 0) { const p = Math.min(a, wallet.debt); wallet.debt -= p; a -= p; log(-p, 'Traffic Police dues'); if (p) ui.toast(`₹${p} went to your Traffic Police dues`, wallet.debt ? `₹${wallet.debt} still owed.` : 'All paid off.', 'police'); }
+    if (wallet.loan > 0 && a > 0) { const p = Math.min(Math.ceil(a / 2), wallet.loan); wallet.loan -= p; a -= p; log(-p, 'Loan repayment'); }
+    wallet.money += a;
+  };
+  wallet.spend = (amount, label) => { amount = Math.round(amount); if (wallet.money < amount) return false; wallet.money -= amount; log(-amount, label); return true; };
+  // a fine is always charged: what you can't pay now is owed
+  wallet.fine = (amount, label) => {
+    const paid = Math.min(wallet.money, amount); wallet.money -= paid; wallet.debt += amount - paid;
+    log(-amount, paid < amount ? `${label} (₹${amount - paid} owed)` : label); return paid;
+  };
+  wallet.borrow = (amount, label) => { wallet.loan += Math.round(amount * 1.1); wallet.money += amount; log(amount, label); };
+  let loanHours = 0;
 
   // ---------- named spots on the real map ----------
   function curb(x, z) {
@@ -117,6 +154,19 @@ export function createGame(scene, world, people, ui, audio, hooks) {
     return { name: `${['Flat', 'House', 'Block'][i % 3]} ${1 + (i % 9)}${'ABCD'[i % 4]}${nr && nr.r.n ? ', ' + nr.r.n : ''}`, ...c };
   }).filter((h) => Math.abs(h.x) < 1300 && Math.abs(h.z) < 880);
 
+  const gig = () => (ride.kind === 'walk' ? WALK[ride.sub] : GIGS[ride.kind]);
+  // on foot: short jobs near you
+  function newWalkRequest(pos) {
+    const sub = pick(['deliver', 'deliver', 'tourist', 'flyers', 'queue']), G = WALK[sub];
+    const near = (pool, lo, hi) => { const c = pool.filter((p) => dist(pos, p) > lo && dist(pos, p) < hi); return c.length ? pick(c) : null; };
+    const doors = world.doors.map((d) => ({ name: d.name, x: d.x, z: d.z }));
+    const from = sub === 'deliver' ? near(KITCHENS, 30, 350) : sub === 'tourist' ? near(SPOTS.filter((p) => /Metro/.test(p.name)), 30, 700) || near(SPOTS, 30, 500) : near(doors, 20, 300) || near(SPOTS, 30, 400);
+    if (!from) { ride.timer = 8; return; }
+    ride.kind = 'walk'; ride.sub = sub; ride.app = G.app; ride.surge = 1; ride.from = from; ride.state = 'offer'; ride.offerT = 20;
+    const est = Math.round(sub === 'deliver' ? G.pay(300) : G.pay());
+    ui.offer({ app: G.app, icon: G.icon, title: G.title(from), sub: `${Math.round(dist(pos, from))} m away · est. ₹${est} · on foot`, secs: 20, onAccept: acceptOffer, onDecline: declineOffer });
+    audio.chime();
+  }
   // a request is only an offer until you accept it: no passenger, beam or GPS before that
   function newRequest(pos, type, ctx) {
     const G = GIGS[type]; ride.kind = type; ride.app = pick(G.apps);
@@ -133,7 +183,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
   }
   function acceptOffer() {
     if (ride.state !== 'offer') return;
-    const G = GIGS[ride.kind];
+    const G = gig();
     ride.state = 'waiting'; ui.offer(null);
     pmesh.position.set(ride.from.x, 0, ride.from.z); pmesh.visible = true;
     pickBeam.show(ride.from.x, ride.from.z);
@@ -150,8 +200,9 @@ export function createGame(scene, world, people, ui, audio, hooks) {
   }
 
   function buy(name, price, energy, desc) {
-    if (wallet.money < price) { ui.toast('Not enough money', `You need ₹${price}. Drive the auto to earn some.`, 'cash'); return false; }
-    wallet.money -= price; wallet.energy = Math.min(100, wallet.energy + energy);
+    if (!wallet.spend(price, name)) { ui.toast('Not enough money', `You need ₹${price}. Take a gig (on foot works too) to earn some.`, 'cash'); return false; }
+    wallet.energy = Math.min(100, wallet.energy + energy);
+    if (/Parle-G/.test(name)) hooks.onBiscuit && hooks.onBiscuit();
     ui.toast(`${name} · ₹${price}`, desc, 'food'); audio.cash();
     return true;
   }
@@ -160,10 +211,11 @@ export function createGame(scene, world, people, ui, audio, hooks) {
   }
 
   // nearest interactable for the current situation
+  const extra = []; // walk-mode actions other modules add (the garage counter, dogs)
   function nearestAction(ctx) {
     if (ctx.mode === 'drive') {
       const p = ctx.player.pos;
-      const G = GIGS[ride.kind];
+      const G = ride.kind === 'walk' ? null : GIGS[ride.kind];
       if (G && ctx.player.type === ride.kind && ride.state === 'waiting' && dist(p, ride.from) < RING_R + 5) return { label: G.pickLabel, run: () => pickup(ctx) };
       if (G && ctx.player.type === ride.kind && ride.state === 'riding' && dist(p, ride.to) < RING_R + 5) return { label: G.dropLabel, run: () => dropoff(ctx) };
       return null;
@@ -184,6 +236,15 @@ export function createGame(scene, world, people, ui, audio, hooks) {
       for (const d of world.doors) { const dd = dist(w, d); if (dd < 2.4) consider(dd, { label: `enter ${d.name}`, run: () => hooks.enterInterior(d) }); }
       for (const v of world.vendors) { const dd = dist(w, v); if (dd < 2.6) { const m = VENDOR_MENUS[v.type]; consider(dd, { label: `buy from the ${m.title.toLowerCase()}`, run: () => menuFor(m.title, m.kn, m.items, 'Street food, Bengaluru prices') }); } }
       for (const s of world.stations) { const dd = Math.hypot(w.x - s.ex, w.z - s.ez); if (dd < 4) consider(dd, { label: `take Namma Metro from ${s.name}`, run: () => metroMenu(s) }); }
+      for (const fn of extra) { const a = fn(w, ctx); if (a) consider(a.d, a); }
+      if (ride.kind === 'walk') {
+        const G = WALK[ride.sub];
+        if (ride.state === 'waiting' && dist(w, ride.from) < RING_R + 2) consider(0, { label: G.pickLabel, run: () => pickup(ctx) });
+        else if (ride.state === 'riding' && G.dropLabel && dist(w, ride.to) < RING_R + 2) consider(0, { label: G.dropLabel, run: () => dropoff(ctx) });
+        else if (ride.state === 'riding' && ride.sub === 'flyers') {
+          for (const p of people.peds) { if (p.x > 1e5 || p.down || ride.handed.has(p)) continue; const dd = dist(w, p); if (dd < 2.2) consider(dd, { label: 'hand over a flyer', run: () => flyer(p) }); }
+        }
+      }
       for (const b of world.benches) { const dd = dist(w, b); if (dd < 1.8) consider(dd, { label: 'sit on the bench', run: () => hooks.rest(1, 15, 'An hour in Cubbon Park. Joggers, squirrels, and a man doing loud laughter yoga.') }); }
       return best && best.a;
     }
@@ -194,13 +255,14 @@ export function createGame(scene, world, people, ui, audio, hooks) {
     ui.menu({
       title: `${from.name} Metro`, kn: 'ನಮ್ಮ ಮೆಟ್ರೋ', foot: 'Purple Line · tokens ₹20',
       items: dests.map((s) => ({ name: `Ride to ${s.name}`, price: 20, desc: 'Stand on the right. Mind the gap.', onPick: () => {
-        if (wallet.money < 20) { ui.toast('Not enough money', '', 'cash'); return; }
-        wallet.money -= 20; hooks.travel(s, from);
+        if (!wallet.spend(20, `Metro to ${s.name}`)) { ui.toast('Not enough money', 'A token is ₹20.', 'cash'); return; }
+        hooks.travel(s, from);
       } })),
     });
   }
 
   function pickup(ctx) {
+    if (ride.kind === 'walk') return walkPickup();
     const p = ctx.player, G = GIGS[ride.kind];
     if (Math.abs(p.speed) > 2.5) { ui.toast('Slow down', 'Stop at the pickup point first.'); return; }
     const pool = G.delivery ? HOMES : SPOTS;
@@ -217,7 +279,40 @@ export function createGame(scene, world, people, ui, audio, hooks) {
     if (G.delivery) ui.toast(`Deliver in ${Math.ceil(ride.deadline / 60)} min`, `To <b>${ride.to.name}</b>. Potholes spill food.`, 'clock');
     audio.chime();
   }
+  function walkPickup() {
+    const G = WALK[ride.sub], f = ride.from;
+    const pool = ride.sub === 'deliver' ? HOMES : SPOTS.filter((p) => /Vidhana|UB City|Chinnaswamy|Church|Brigade/.test(p.name));
+    const c = pool.filter((p) => dist(p, f) > (ride.sub === 'deliver' ? 150 : 250) && dist(p, f) < (ride.sub === 'deliver' ? 450 : 1100));
+    ride.to = ride.sub === 'deliver' || ride.sub === 'tourist' ? pick(c.length ? c : pool) : f;
+    ride.state = 'riding'; ride.rating = 5; ride.quip = 12; ride.elapsed = 0; ride.peaks = 0;
+    ride.fare = ride.sub === 'deliver' ? G.pay(dist(f, ride.to)) : G.pay();
+    ride.deadline = ride.sub === 'deliver' ? dist(f, ride.to) / 1.7 + 40 : 0;
+    pickBeam.hide(); pmesh.visible = ride.sub === 'tourist';
+    if (ride.sub === 'flyers') { ride.handed = new Set(); ride.left = 150; ui.toast('10 flyers to hand out', `Walk up to people near ${f.name} and press ${ui.kbd('interact')}. 2.5 minutes.`, 'receipt'); }
+    else if (ride.sub === 'queue') { ride.qT = 0; dropBeam.show(f.x, f.z); ui.toast('Hold the spot', 'Stay inside the ring for a minute. Leaving pauses the clock.', 'clock'); }
+    else { dropBeam.show(ride.to.x, ride.to.z); ui.toast(ride.sub === 'deliver' ? `Walk it there in ${Math.ceil(ride.deadline / 60)} min` : 'Show them the way', `To <b>${ride.to.name}</b>. ${ride.sub === 'tourist' ? 'Pass Peak Bengaluru moments on the way for a better tip.' : 'Running is faster (and tiring).'}`, ride.sub === 'deliver' ? 'walk' : 'landmark'); }
+    audio.chime();
+  }
+  // finishing an on-foot job: pay, a line, back to waiting for the next one
+  function walkDone(total, line) {
+    const G = WALK[ride.sub];
+    ride.earned += total; ride.rides++; wallet.earn(total, `${G.app} ${G.word}`);
+    ui.toast(`${G.app} paid ₹${total}`, `${G.word[0].toUpperCase() + G.word.slice(1)} done.`, 'cash', 'cash');
+    if (line) ui.dialogue(line);
+    audio.cash(); pmesh.visible = false; dropBeam.hide();
+    ride.state = 'cooldown'; ride.timer = 6 + (100 - wallet.respect) * 0.2;
+  }
+  function flyer(p) {
+    ride.handed.add(p);
+    ui.dialogue(`${pick(['Uncle', 'Aunty', 'Techie', 'Student', 'Jogger'])}: ${pick(WALK.flyers.lines)}`);
+    if (ride.handed.size >= 10) walkDone(WALK.flyers.pay(), 'Founder (on the phone): "Ten! We are basically a unicorn now."');
+  }
   function dropoff(ctx) {
+    if (ride.kind === 'walk') {
+      const G = WALK[ride.sub];
+      if (ride.sub === 'deliver') { const early = ride.elapsed < ride.deadline; return walkDone(Math.round(ride.fare) + (early ? 15 : 0), early ? pick(G.drop) : 'Customer: "Cold. But you walked, so okay."'); }
+      return walkDone(Math.round(ride.fare + ride.peaks * 25 + (wallet.respect > 60 ? 15 : 0)), pick(G.drop));
+    }
     const p = ctx.player, G = GIGS[ride.kind];
     if (Math.abs(p.speed) > 2.5) { ui.toast('Slow down', 'Stop first.'); return; }
     const early = G.delivery ? ride.elapsed < ride.deadline : true;
@@ -225,7 +320,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
     // no tips for drivers with a bad reputation
     const tip = ride.rating >= 4.5 && early && wallet.respect > 40 ? 10 + Math.round(Math.random() * 3) * 5 : 0;
     const total = Math.round(ride.fare) + tip;
-    ride.earned += total; ride.rides++; wallet.money += total;
+    ride.earned += total; ride.rides++; wallet.earn(total, `${ride.app} ${G.word}`);
     ui.toast(`${ride.app} paid ₹${total}`, `${ride.surge > 1 ? 'Surge 1.6× · ' : ''}Fare ₹${Math.round(ride.fare)}${tip ? ` + ₹${tip} tip` : ''}${G.delivery && !early ? ' · late!' : ''} · rated ${Math.round(ride.rating)}/5`, 'cash', 'cash');
     const say = ride.rating >= 4 ? pick(G.drop) : G.bad;
     ui.dialogue(say.includes(':') ? say : `${G.who}: "${say}"`);
@@ -236,28 +331,47 @@ export function createGame(scene, world, people, ui, audio, hooks) {
 
   function interact(ctx) { const a = nearestAction(ctx); if (a) { a.run(); return true; } return false; }
   function onCrash() {
-    if (ride.state !== 'riding') return; const G = GIGS[ride.kind];
+    if (ride.state !== 'riding' || ride.kind === 'walk') return; const G = GIGS[ride.kind];
     ride.rating = Math.max(1, ride.rating - 0.5); const l = pick(G.crash); ui.dialogue(l.includes(':') || l.startsWith('The') ? l : `${G.who}: "${l}"`);
   }
   function onPothole() {
-    if (ride.state !== 'riding') return; const G = GIGS[ride.kind];
+    if (ride.state !== 'riding' || ride.kind === 'walk') return; const G = GIGS[ride.kind];
     ride.rating = Math.max(1, ride.rating - (G.delivery ? 0.3 : 0.15));
     if (Math.random() < 0.5) ui.dialogue(G.delivery ? 'The sambar just leaked into the bag.' : `${G.who}: "Ayyo, pothole! My back."`);
   }
 
   let lowWarned = false;
   function update(dt, t, ctx, gameHoursDelta) {
+    clock = { hours: ctx.hours ?? 0, day: ctx.day ?? 0 };
+    // a loan grows 10% every in-game day you still owe it
+    if (wallet.loan > 0 && (loanHours += gameHoursDelta) >= 24) { loanHours -= 24; const i = Math.ceil(wallet.loan * 0.1); wallet.loan += i; log(-i, 'Loan interest'); }
     const here = ctx.mode === 'drive' ? ctx.player.pos : ctx.walker.pos;
     pickBeam.update(t, here); dropBeam.update(t, here);
     const driving = ctx.mode === 'drive';
     // stopping inside the ring does the pickup / drop-off, like pressing E
     const goal = ride.state === 'waiting' ? ride.from : ride.state === 'riding' ? ride.to : null;
-    if (goal && driving && ctx.player.type === ride.kind && dist(ctx.player.pos, goal) < RING_R && Math.abs(ctx.player.speed) < 1.5) {
+    const walkJob = ride.kind === 'walk', onFoot = ctx.mode === 'walk';
+    if (walkJob && goal && onFoot && dist(ctx.walker.pos, goal) < RING_R && (ride.state === 'waiting' || ride.sub === 'deliver' || ride.sub === 'tourist')) {
+      if ((ride.hold = (ride.hold || 0) + dt) > 0.6) { ride.hold = 0; ride.state === 'waiting' ? pickup(ctx) : dropoff(ctx); }
+    } else if (!walkJob && goal && driving && ctx.player.type === ride.kind && dist(ctx.player.pos, goal) < RING_R && Math.abs(ctx.player.speed) < 1.5) {
       if ((ride.hold = (ride.hold || 0) + dt) > 0.6) { ride.hold = 0; ride.state === 'waiting' ? pickup(ctx) : dropoff(ctx); }
     } else ride.hold = 0;
-    if (ride.state === 'cooldown') { if (driving) { ride.timer -= dt; if (ride.timer <= 0) newRequest(ctx.player.pos, ctx.player.type, ctx); } }
-    else if (ride.state === 'offer') { ride.offerT -= dt; ui.offerTick(ride.offerT); if (ride.offerT <= 0 || !driving || ctx.player.type !== ride.kind) declineOffer(ride.offerT <= 0); }
-    else if (ctx.mode === 'drive' && ctx.player.type !== ride.kind) { cancel(); ui.toast(`${ride.app} job cancelled`, 'You switched vehicles mid-job.'); }
+    if (ride.state === 'cooldown') {
+      // vehicle jobs while driving; short on-foot jobs while walking (a little less often)
+      if (driving) { ride.timer -= dt; if (ride.timer <= 0) newRequest(ctx.player.pos, ctx.player.type, ctx); }
+      else if (onFoot) { ride.timer -= dt * 0.7; if (ride.timer <= 0) newWalkRequest(ctx.walker.pos); }
+    } else if (ride.state === 'offer') { ride.offerT -= dt; ui.offerTick(ride.offerT); if (ride.offerT <= 0 || (walkJob ? !onFoot : !driving || ctx.player.type !== ride.kind)) declineOffer(ride.offerT <= 0); }
+    else if (walkJob && driving) { cancel(); ui.toast(`${ride.app} job cancelled`, 'That one was on foot.', 'walk'); }
+    else if (!walkJob && ctx.mode === 'drive' && ctx.player.type !== ride.kind) { cancel(); ui.toast(`${ride.app} job cancelled`, 'You switched vehicles mid-job.'); }
+    else if (walkJob && ride.state === 'riding' && onFoot) {
+      const G = WALK[ride.sub], w = ctx.walker.pos;
+      ride.elapsed += dt; ride.quip -= dt;
+      if (ride.quip <= 0 && G.lines && ride.sub !== 'flyers') { ride.quip = 15 + Math.random() * 10; ui.dialogue(pick(G.lines)); }
+      // the tourist walks a couple of steps behind you
+      if (ride.sub === 'tourist') { const dx = w.x - pmesh.position.x, dz = w.z - pmesh.position.z, d = Math.hypot(dx, dz); if (d > 1.8) { const k = Math.min(1, dt * 3 * (d - 1.8) / d); pmesh.position.x += dx * k; pmesh.position.z += dz * k; } pmesh.rotation.y = Math.atan2(dx, dz); }
+      if (ride.sub === 'flyers' && (ride.left -= dt) <= 0) walkDone(ride.handed.size * 6, `Founder (on the phone): "Only ${ride.handed.size}? We will call it a soft launch."`);
+      if (ride.sub === 'queue' && dist(w, ride.from) < RING_R) { ride.qT += dt; ride.fare = G.pay() * Math.min(1, ride.qT / 60); if (ride.qT >= 60) walkDone(G.pay(), 'Client (on the phone): "You got the token? You are a legend."'); }
+    }
     else if (ride.state === 'riding' && ctx.mode === 'drive') {
       const G = GIGS[ride.kind];
       ride.fare = G.fare(ctx.player.odometer - ride.startOdo) * (ride.surge || 1);
@@ -277,6 +391,7 @@ export function createGame(scene, world, people, ui, audio, hooks) {
       it.s.position.y = 2.4 + Math.sin(t * 2 + it.x) * 0.25;
       if (dist(focus, it) < 4.5) {
         it.got = true; it.s.visible = false;
+        if (ride.kind === 'walk' && ride.sub === 'tourist' && ride.state === 'riding') ride.peaks++;
         ui.card(it.e, it.t, it.b, 'Peak Bengaluru moment', ctx.mode === 'drive');
         audio.chime();
       }
@@ -293,6 +408,10 @@ export function createGame(scene, world, people, ui, audio, hooks) {
   }
 
   return {
+    addAction: (fn) => extra.push(fn),
+    walkGigs: Object.entries(WALK).map(([id, G]) => ({ id, app: G.app, icon: G.icon, word: G.word })),
+    // ask for an on-foot job soon (after "leave it at the garage")
+    walkGigNow: () => { if (ride.state === 'cooldown') ride.timer = Math.min(ride.timer, 1.5); },
     update, interact, onCrash, onPothole, markers, ride, wallet, cancel, spots: SPOTS, acceptOffer, declineOffer: () => declineOffer(false),
     get collected() { return items.filter((i) => i.got).length; }, totalCollectibles: items.length,
     // save / load: which collectibles you already found

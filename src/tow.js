@@ -97,20 +97,24 @@ export function createTow(scene, world, ui, audio) {
       player.pos.set(T.from.x + (bedX - T.from.x) * lift, 0, T.from.z + (bedZ - T.from.z) * lift);
       player.heading = T.from.h + (Math.atan2(L.dx, L.dz) - T.from.h) * lift; player.syncMesh();
       player.group.position.y = Math.sin(lift * Math.PI) * 1.6 + lift * 1.55;
-      if (k >= 1) { T.phase = 'leaving'; T.t = 0; T.speed = 0; wallet.money = Math.max(0, wallet.money - 500); ui.toast('Towed! ₹500 fine', `Collect it from the <b>${yard.name}</b>, or press ${ui.kbd('call')} to pay ₹500 and have it delivered.`, 'truck'); }
+      // no money changes hands here: the release fee is paid at Namma Garage & Impound (cash, a garage loan, or later)
+      if (k >= 1) { T.phase = 'leaving'; T.t = 0; T.speed = 0; ui.toast('Towed!', 'Your vehicle is going to Namma Garage & Impound. Pay the release fee there.', 'truck'); }
     } else if (T.phase === 'leaving') {
       boom.rotation.y = 0;
       drive(dt, vehicles, [], 9);
       if (!T.cancelled) { player.pos.set(truck.position.x - L.dx * 1.8, 0, truck.position.z - L.dz * 1.8); player.heading = Math.atan2(L.dx, L.dz); player.syncMesh(); player.group.position.y = 1.55; }
       if (T.s > L.stop + 70 || T.t > 25) {
         truck.visible = false; T.phase = 'none'; T.blockT = 0;
-        if (!T.cancelled) { T.impounded = true; player.pos.set(yard.x, 0, yard.z); player.heading = yard.yaw; player.park(); navTo({ ...yard, name: yard.name, keep: false }); }
+        if (!T.cancelled) { impoundNow(player); onImpound ? onImpound() : navTo({ ...yard, name: yard.name, keep: true }); }
         T.cancelled = false;
       }
     }
   }
   // walking up to it at the yard (or paying to have it delivered) releases it
   function release() { T.impounded = false; }
+  // your vehicle parked at the yard (also used to restore a saved game)
+  function impoundNow(player) { T.impounded = true; player.pos.set(yard.x, 0, yard.z); player.heading = yard.yaw; player.park(); }
+  let onImpound = null;
   // for traffic: the truck (cab and tail) is something to stop behind
   const bl = [{ x: 0, z: 0, speed: 0, r: 1.4 }, { x: 0, z: 0, speed: 0, r: 1.4 }];
   return {
@@ -120,6 +124,7 @@ export function createTow(scene, world, ui, audio) {
       bl[0].x = truck.position.x + L.dx * 2.5; bl[0].z = truck.position.z + L.dz * 2.5; bl[1].x = truck.position.x - L.dx * 3.5; bl[1].z = truck.position.z - L.dz * 3.5;
       bl[0].speed = bl[1].speed = T.speed; return bl;
     },
+    impoundNow, set onImpound(f) { onImpound = f; },
     state: T, get impounded() { return T.impounded; }, get busy() { return T.phase !== 'none'; },
   };
 }

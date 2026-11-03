@@ -29,6 +29,8 @@ import { createAudio } from './audio.js';
 import { createUI } from './ui.js';
 import { loadMap } from './map-data.js';
 import { createSim } from './sim.js';
+import { createGarage } from './garage.js';
+import { createDogs } from './dogs.js';
 import { gpuInfo, createGpuTimer, instrumentPasses, createBenchmark } from './perf.js';
 import { createInput } from './input.js';
 import { createOverlays } from './overlay.js';
@@ -161,6 +163,7 @@ async function init() {
     setWeather: (w) => { state.weather = w; weather.set(w); if (state.live) setLive(false); ui.sync(state); },
     setVehicle: (v) => {
       if (state.mode !== 'drive') { ui.toast('Get in first', `Walk to your vehicle and press ${K('vehicle')}.`, 'auto'); return; }
+      if (!garage.owns(v)) { ui.toast(`You don't own a ${VEHICLE_STATS[v].label.toLowerCase()}`, 'Buy one at Namma Garage & Impound (it is on the map).', 'truck'); return; }
       state.vehicle = v; player.setType(v);
       ui.toast(VEHICLE_STATS[v].label, v === 'auto' ? 'Namma Auto ride requests on. Meter haaki!' : v === 'scooter' ? 'Swiggly / Zoomato delivery orders on.' : 'Oober trip requests on. Surge at rush hour and in rain.', v); ui.sync(state);
     },
@@ -218,7 +221,20 @@ async function init() {
   const nav = createNav(scene, world);
   const pinBeam = createBeam(scene, '#ff4d6d'); pinBeam.visible = false;
   let jobKey = '';
+  // Namma Garage & Impound: towed vehicles, buying vehicles, upgrades, repairs (src/garage.js)
+  const garage = createGarage({ scene, world, tow, player, game, ui, audio, navTo: (t) => (t ? navTo(t) : nav.clear()) });
+  tow.onImpound = () => garage.impounded();
+  game.addAction((w) => garage.action(w));
+  // street dogs: pet them, feed them, befriend one; some chase you at night (src/dogs.js)
+  const dogs = createDogs(scene, world, ui, audio, game.wallet);
+  game.addAction((w) => dogs.action(w));
+  hooks.onBiscuit = () => dogs.addBiscuits(1);
+  const dogEvents = {
+    onNip(d) { game.wallet.energy = Math.max(0, game.wallet.energy - 4); if (state.mode === 'drive' && player.type === 'scooter') { player.steer += (Math.random() - 0.5) * 1.2; player.vel.multiplyScalar(0.92); } ui.toast(`${d.name} nipped at you`, state.mode === 'drive' ? 'Slow down or stop and it will lose interest.' : 'Stop walking and it will back off.', 'paw'); },
+    onNearMiss(d) { game.wallet.respect = Math.max(0, game.wallet.respect - 2); ui.toast(`You nearly hit ${d.name}`, 'It jumped clear. The chai stall saw everything.', 'paw'); },
+  };
   const places = [
+    garage.place,
     ...world.stations.map((s) => ({ name: `${s.name} Metro`, x: s.ex, z: s.ez, icon: 'metro' })),
     ...(world.vidhana ? [{ name: 'Vidhana Soudha', x: world.vidhana.fx, z: world.vidhana.fz, icon: 'landmark' }] : []),
     ...(world.stadium ? [{ name: 'Chinnaswamy Stadium', x: world.stadium.x, z: world.stadium.z + world.stadium.r + 15, icon: 'cricket' }] : []),
@@ -273,13 +289,14 @@ async function init() {
   // ---------- save / load: one slot in this browser ----------
   function saveGame() {
     const p = player.pos;
-    try { localStorage.setItem('blr.save', JSON.stringify({ v: 1, hours: state.hours, day: state.day, weather: state.weather, vehicle: player.type, pos: [p.x, p.z, player.heading], wallet: { ...game.wallet }, found: game.found })); return true; } catch (e) { return false; }
+    try { localStorage.setItem('blr.save', JSON.stringify({ v: 1, hours: state.hours, day: state.day, weather: state.weather, vehicle: player.type, pos: [p.x, p.z, player.heading], wallet: { ...game.wallet }, found: game.found, garage: garage.save(), impounded: tow.impounded, dogs: dogs.save() })); return true; } catch (e) { return false; }
   }
   function loadGame() {
     let s = null; try { s = JSON.parse(localStorage.getItem('blr.save') || 'null'); } catch (e) { /* storage blocked */ }
     if (!s || s.v !== 1) return false;
     Object.assign(game.wallet, s.wallet); state.hours = s.hours; state.day = s.day; state.weather = s.weather; weather.set(s.weather);
     state.vehicle = s.vehicle; player.setType(s.vehicle); player.pos.set(s.pos[0], 0, s.pos[1]); player.heading = s.pos[2]; player.park(); game.restore(s.found);
+    if (s.impounded) tow.impoundNow(player); garage.load(s.garage); dogs.load(s.dogs); if (!garage.owns(player.type)) player.setType('auto');
     ui.sync(state); return true;
   }
   function quitToTitle() {
@@ -417,7 +434,7 @@ async function init() {
     } else if (state.mode === 'walk') {
       if (W.y > 1 || W.pos.distanceTo(player.pos) > player.radius + 2.6) { ui.toast('Too far from your vehicle', `Press ${K('call')} to call it to the nearest road.`, 'phone'); return; }
       if (tow.busy) { ui.toast('Too late', 'It is already on the tow truck.', 'truck'); return; }
-      if (tow.impounded) { tow.release(); ui.toast('Released from the tow yard', 'Fine already paid. Park properly next time, saar.', 'receipt'); }
+      if (tow.impounded) { garage.impoundMenu(); return; }
       walker.root.visible = false; state.mode = 'drive'; camCtl.yaw = 0; player.setOccupied(true);
     }
   }
@@ -425,16 +442,13 @@ async function init() {
     if (state.mode === 'drive' && player.broken) {
       // roadside mechanic: a fade, a bill, a working vehicle
       ui.fade(() => {
-        const cost = Math.min(150, game.wallet.money); game.wallet.money -= cost; player.repair(); state.hours = (state.hours + 0.25) % 24;
+        const cost = 150; game.wallet.fine(cost, 'Mechanic Anna (roadside repair)'); player.repair(); state.hours = (state.hours + 0.25) % 24;
         ui.toast('Mechanic anna fixed it', cost >= 150 ? '₹150. "Next time drive slow, saar."' : `₹${cost}. "Pay the rest next time, anna."`, 'wrench');
       }, 'Mechanic anna is fixing it…');
       return;
     }
     if (state.mode !== 'walk' || tow.busy) return;
-    if (tow.impounded) {
-      if (game.wallet.money < 500) { ui.toast('Need ₹500', 'Delivery from the tow yard costs ₹500. Or walk there and collect it.', 'cash'); return; }
-      game.wallet.money -= 500; tow.release(); ui.toast('Delivered from the tow yard', '₹500 paid.', 'truck');
-    }
+    if (tow.impounded) { garage.route(); ui.toast('Your vehicle is impounded', `It's at Namma Garage & Impound: route set. Pay ₹${garage.fee()} there, take a garage loan, or earn it on foot.`, 'truck'); return; }
     const nr = world.nearestRoad(W.pos.x, W.pos.z, 80);
     if (!nr) { ui.toast('No road nearby', 'Walk closer to a street.', 'road'); return; }
     const side = ((W.pos.x - nr.x) * nr.dz - (W.pos.z - nr.z) * nr.dx) >= 0 ? 1 : -1, o = nr.r.hw - 1.4;
@@ -455,7 +469,7 @@ async function init() {
   const ONE = {
     horn: () => state.mode === 'drive' && audio.horn(player.type),
     camera: () => actions.setCamera(cycle(['chase', 'first', 'cine'], state.camera)),
-    switchVehicle: () => actions.setVehicle(cycle(['auto', 'scooter', 'car'], state.vehicle)),
+    switchVehicle: () => { if (garage.owned.length < 2) return ui.toast('Only one vehicle', 'Buy a scooter or a car at Namma Garage & Impound.', 'truck'); actions.setVehicle(cycle(garage.owned, state.vehicle)); },
     interact: () => game.interact(ctx()),
     vehicle: () => state.mode !== 'interior' && toggleVehicle(),
     call: () => summon(),
@@ -518,7 +532,7 @@ async function init() {
     ctl.run = input.down('run');
     if (active() && (p.rx || p.ry)) { if (state.mode === 'drive') camCtl.yaw -= p.rx * 0.05; else camCtl.walkYaw -= p.rx * 0.05; camCtl.pitch = clamp(camCtl.pitch + p.ry * 0.03, -0.5, 1.25); camCtl.idle = 0; }
   }
-  const ctx = () => ({ rush: (state.hours >= 8.5 && state.hours < 11) || (state.hours >= 17.5 && state.hours < 21), raining: weather.state.rain > 0.3, mode: state.mode, player, walker: W, interior, place: W.place, menu: W.place && interior.menu, running: state.mode !== 'drive' && ctl.run && W.speed > 3, extraPrompt: extraPrompt() });
+  const ctx = () => ({ hours: state.hours, day: state.day, rush: (state.hours >= 8.5 && state.hours < 11) || (state.hours >= 17.5 && state.hours < 21), raining: weather.state.rain > 0.3, mode: state.mode, player, walker: W, interior, place: W.place, menu: W.place && interior.menu, running: state.mode !== 'drive' && ctl.run && W.speed > 3, extraPrompt: extraPrompt() });
   function extraPrompt() {
     if (state.mode === 'walk' && W.pos.distanceTo(player.pos) < player.radius + 2.6) return `Press ${K('vehicle')} to get in your ${VEHICLE_STATS[player.type].label.toLowerCase()}`;
     return null;
@@ -562,7 +576,7 @@ async function init() {
       const loss = Math.round(10 + Math.min(15, speed));
       game.wallet.respect = Math.max(0, game.wallet.respect - loss);
       const cop = signals.list.some((s) => s.cop && Math.hypot(s.x - p.x, s.z - p.z) < 160);
-      if (cop) { game.wallet.money = Math.max(0, game.wallet.money - 500); ui.toast('Police: ₹500 fine', '"You hit a pedestrian! Licence-u kodi. Next time it\'s the station."', 'police'); }
+      if (cop) { game.wallet.fine(500, 'Police fine: hit a pedestrian'); ui.toast('Police: ₹500 fine', '"You hit a pedestrian! Licence-u kodi. Next time it\'s the station."', 'police'); }
       const SHOUT = ['"Yenu madtha idiya?! Kannu ilva?!"', '"Somebody call the police!"', '"Hey! Stop the auto! STOP!"', '"Ayyo! Are you okay, saar?"'];
       ui.toast('You knocked someone down', `${SHOUT[Math.floor(Math.random() * SHOUT.length)]} Respect −${loss}`, 'medic');
       if (game.ride.state === 'riding') { game.cancel(); ui.dialogue(`${game.ride.kind === 'scooter' ? 'Customer (on the phone)' : 'Passenger'}: "That's it, I'm reporting you. Stop here!"`); }
@@ -847,7 +861,7 @@ async function init() {
       sim.step(dt, t, focus, ws.rain); mark('traffic'); // traffic + people: in the worker when it's running, else here
       tow.update(dt, { player, mode: state.mode, blockedBehind: blockers[0].hits || 0, wallet: game.wallet, navTo, traffic, walker: state.mode === 'walk' ? W.pos : null });
       metro.update(dt); mark('people');
-      game.update(dt, t, ctx(), dh); mark('game');
+      game.update(dt, t, ctx(), dh); garage.update(t, f); mark('game');
       // jobs drive the GPS: pickup first, then the drop-off
       const r = game.ride, key = r.state === 'waiting' ? 'p:' + r.from.name : r.state === 'riding' ? 'd:' + r.to.name : '';
       // keep: the route stays (and reroutes) until the job itself says you're done, even if a shortcut fools the GPS
@@ -876,6 +890,7 @@ async function init() {
     if (wd > 0.3 && player.type === 'auto' && once('stall', 30)) ui.toast('Engine sputtering', 'Water is up to the floorboard. Go slow or you will stall.', 'drop');
     edges.update(dt, camera.position, atm.hor, atm.night);
     if (!state.paused && state.mode !== 'interior' && state.mode !== 'metro') life.update(dt, { hours: state.hours, day: state.day, focus: f, mode: state.mode, zone: $('locName').textContent, lights: L, camera, driving: state.mode === 'drive', speed: state.mode === 'drive' ? Math.abs(player.speed) : W.speed });
+    if (!state.paused && state.mode !== 'interior' && state.mode !== 'metro') dogs.update(dt, t, { mode: state.mode, player, walker: W.pos, walkSpeed: W.speed, lights: L, peds: people.peds, ...dogEvents });
     if (!state.paused && state.mode !== 'interior' && state.mode !== 'metro' && edges.near(f)) ui.toast('Road closed', 'Namma Metro Phase 3 work since 2017. Diversion ahead (there is no diversion).', 'cone');
     const rainHere = state.mode === 'interior' ? ws.rain * 0.3 : ws.rain;
     audio.update(state.mode === 'drive' ? player.type : 'none', player.speed, ctl.throttle, rainHere, f.x, f.z, state.mode === 'drive' ? player.heading : W.yaw);
@@ -887,7 +902,7 @@ async function init() {
     }
     uiT -= rawDt;
     if (uiT <= 0) { uiT = 1 / 12; ui.update({ hours: state.hours, weather: state.weather, temp: ws.temp, live: state.live, speed: player.speed, vehicle: VEHICLE_STATS[player.type].label, vehicleType: player.type, mode: state.mode, ride: game.ride, collected: game.collected, totalCollect: game.totalCollectibles, wallet: game.wallet, rawDt: 0, dayName: life.dayName(state.day), health: player.health });
-    if (state.mode !== 'interior') ui.drawMinimap(f, state.mode === 'drive' ? player.heading : W.yaw, [...game.markers(), ...(pinBeam.visible ? [{ x: pinBeam.position.x, z: pinBeam.position.z, c: '#ff4d6d', big: true }] : []), ...(state.mode === 'walk' ? [{ x: player.pos.x, z: player.pos.z, c: '#ffcf3f', icon: 'V', big: true }] : [])], traffic.vehicles, nav.route); }
+    if (state.mode !== 'interior') ui.drawMinimap(f, state.mode === 'drive' ? player.heading : W.yaw, [...game.markers(), ...garage.markers(), ...(pinBeam.visible ? [{ x: pinBeam.position.x, z: pinBeam.position.z, c: '#ff4d6d', big: true }] : []), ...(state.mode === 'walk' ? [{ x: player.pos.x, z: player.pos.z, c: '#ffcf3f', icon: 'V', big: true }] : [])], traffic.vehicles, nav.route); }
     ui.frame(rawDt);
 
     mark('ui');
@@ -915,7 +930,7 @@ async function init() {
   console.info(`[silicon-streets] shaders ready in ${Math.round(performance.now() - tc)} ms`);
   frame();
   // debug handle for automated checks: __game.step(n) advances n frames synchronously
-  window.__game = { sim, state, player, world, actions, weather, camera, keys: input.held, input, overlays, ui, life, audio, renderer, game, W, hooks, traffic, prof, scene, composer, sun, bloom, gtao, quality, get phys() { return phys; }, flood, edges, nav, people, signals, camCtl, tow, step: (n = 1, dt = 1 / 30) => { for (let i = 0; i < n; i++) tick(dt); } };
+  window.__game = { garage, dogs, sim, state, player, world, actions, weather, camera, keys: input.held, input, overlays, ui, life, audio, renderer, game, W, hooks, traffic, prof, scene, composer, sun, bloom, gtao, quality, get phys() { return phys; }, flood, edges, nav, people, signals, camCtl, tow, step: (n = 1, dt = 1 / 30) => { for (let i = 0; i < n; i++) tick(dt); } };
 }
 
 init().catch((e) => {

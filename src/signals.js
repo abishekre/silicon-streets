@@ -123,7 +123,7 @@ export function createSignals(scene, world) {
         const hd = Math.atan2(player.vel.x, player.vel.y);
         if (!s.signal.canGo(hd)) {
           const copNear = cops.some((k) => Math.hypot(k.x - s.x, k.z - s.z) < 5);
-          if (copNear) { wallet.money = Math.max(0, wallet.money - 100); ui.toast('Fine: ₹100', 'Traffic police: "Signal jump, saar! Next time licence seize."'); }
+          if (copNear) { wallet.fine ? wallet.fine(100, 'Fine: jumped a red') : (wallet.money = Math.max(0, wallet.money - 100)); ui.toast('Fine: ₹100', 'Traffic police: "Signal jump, saar! Next time licence seize."'); }
           else ui.toast('You jumped a red', 'Nobody saw. This time.');
         }
       }

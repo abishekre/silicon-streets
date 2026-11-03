@@ -161,11 +161,13 @@ export class Player {
     this.setType('auto');
   }
   setType(type, occupied = true) {
-    this.type = type; this.stats = VEHICLE_STATS[type];
+    // tune / paintFor come from the garage (upgrades you've fitted, the colour you picked)
+    this.type = type; this.stats = this.tune ? this.tune(type, VEHICLE_STATS[type]) : VEHICLE_STATS[type];
+    const paint = this.paintFor && this.paintFor(type);
     // wheels live outside bodyPivot, so the old vehicle's wheels must be removed too
     this.bodyPivot.clear(); for (const w of this.wheels) this.group.remove(w.pivot); this.wheels = [];
     // the player's own vehicle is built without a rider; the rider is a separate mesh hidden when you get out
-    const model = type === 'auto' ? MODELS.auto(false) : type === 'scooter' ? MODELS.scooter('#e53935', '#3949ab', '#fafafa', false) : MODELS.car('#c62828');
+    const model = type === 'auto' ? MODELS.auto(false) : type === 'scooter' ? MODELS.scooter(paint || '#e53935', '#3949ab', '#fafafa', false) : MODELS.car(paint || '#c62828');
     const riderParts = type === 'auto' ? seated(0, 0.95, 0.3, '#b59b6a') : type === 'scooter' ? seated(0, 0.92, -0.18, '#b59b6a', '#8d5a3b', '#fafafa') : seated(-0.38, 0.72, -0.1, '#b59b6a');
     this.radius = model.radius;
     const body = new THREE.Mesh(model.body, this.bodyMat); body.castShadow = true;
@@ -231,7 +233,7 @@ export class Player {
     this.pos.x = p.x; this.pos.z = p.z;
     for (const ph of world.potholes) {
       if (Math.abs(ph.x - p.x) < 2 && Math.abs(ph.z - p.z) < 2 && Math.hypot(ph.x - p.x, ph.z - p.z) < ph.r + 0.4 && Math.abs(fs) > 3 && this.bump < 0.3) {
-        this.bump = 1; ev.pothole(Math.abs(fs), ph);
+        this.bump = 1; ev.pothole(Math.abs(fs) * (st.susp ?? 1), ph);
       }
     }
     this.speed = fs; this.surface = surface;
@@ -249,6 +251,7 @@ export class Player {
     this.bodyPivot.position.y = Math.abs(Math.sin(this.bump * 18)) * 0.12 * this.bump + (surface === 'grass' ? Math.sin(performance.now() * 0.03) * 0.015 * Math.min(1, Math.abs(fs) / 5) : 0);
   }
   damage(d) {
+    d *= this.stats.armour ?? 1;
     this.health = Math.max(0, this.health - d);
     // each knock leaves the body a little crooked
     this.dentX = Math.max(-0.06, Math.min(0.06, this.dentX + (Math.random() - 0.5) * d * 0.004));

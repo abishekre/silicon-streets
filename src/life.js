@@ -28,27 +28,7 @@ export function createLife(scene, world, ui, audio) {
   // Deepavali week (real calendar: 2026-11-08). Also on for the week before/after.
   const deepavali = Math.abs(today - new Date(2026, 10, 8)) < 9 * 864e5;
 
-  // ---------- street dogs: sleeping on the footpath, a few wandering ----------
-  const dogG = merge([
-    part(new THREE.CapsuleGeometry(0.17, 0.55, 2, 6).rotateX(Math.PI / 2).translate(0, 0.35, 0), '#fff'),
-    part(new THREE.SphereGeometry(0.14, 8, 6).translate(0, 0.48, 0.42), '#fff'), box(0.09, 0.08, 0.14, 0, 0.44, 0.58, '#3a2a1a'),
-    box(0.05, 0.12, 0.05, -0.08, 0.6, 0.38, '#fff'), box(0.05, 0.12, 0.05, 0.08, 0.6, 0.38, '#fff'),
-    ...[[-0.1, 0.25], [0.1, 0.25], [-0.1, -0.25], [0.1, -0.25]].map(([x, z]) => part(new THREE.CylinderGeometry(0.035, 0.035, 0.3, 5).translate(x, 0.15, z), '#fff')),
-    part(new THREE.CylinderGeometry(0.02, 0.03, 0.3, 4).rotateX(-0.8).translate(0, 0.48, -0.4), '#fff'),
-  ]);
-  const DOGC = ['#c8a165', '#8d6e4a', '#3b2f2a', '#e8dcc6', '#a0522d'];
-  const edges = world.graph.edges.filter((e) => e.len > 30 && Math.abs(e.ax) < 1200 && Math.abs(e.az) < 800);
-  const dogs = [];
-  for (let i = 0; i < 26 && edges.length; i++) {
-    const e = edges[Math.floor(rng() * edges.length)], s = rng() * e.len, lat = e.w / 2 + 1.8;
-    const x = e.ax + e.dx * s + e.dz * lat, z = e.az + e.dz * s - e.dx * lat;
-    if (world.insideBuilding(x, z, 0.5)) continue;
-    const m = new THREE.Mesh(dogG, new THREE.MeshStandardMaterial({ color: rng.pick(DOGC), roughness: 0.9, vertexColors: true }));
-    const sleeping = rng() < 0.65;
-    m.position.set(x, 0, z); m.rotation.y = rng() * 6.28; if (sleeping) { m.rotation.z = Math.PI / 2 * 0.95; m.position.y = 0.17; }
-    m.castShadow = true; scene.add(m);
-    dogs.push({ m, x, z, sleeping, e, s, lat, dir: rng() < 0.5 ? 1 : -1, barkCd: 0 });
-  }
+  // (street dogs live in src/dogs.js)
 
   // ---------- BMTC bus stops with people waiting ----------
   const stops = [];
@@ -125,7 +105,7 @@ export function createLife(scene, world, ui, audio) {
   let djT = 20;
   function radioNext() { const name = audio.setStation((['Off', 'Namma 93.FM', 'Lo-fi Koramangala 101'].indexOf(audio.station) + 1)); ui.toast('Radio', name === 'Off' ? 'Radio off.' : `Tuned to <b>${name}</b>.`, 'radio'); djT = 6; }
 
-  let birdT = 4, bellT = 10, hawkT = 15, lastMatch = null, lastSunday = null, dogToast = 0;
+  let birdT = 4, bellT = 10, hawkT = 15, lastMatch = null, lastSunday = null;
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pv = new THREE.Vector3();
   const HAWK = ['Hawker: "Kadlekai! Kadlekai! Bisi bisi kadlekai!"', 'Hawker: "Soppu! Fresh soppu, amma!"', 'Hawker: "Hoovu! Mallige hoovu!"', 'Hawker: "Old newspaper, old bottle!"'];
   function update(dt, s) {
@@ -151,17 +131,6 @@ export function createLife(scene, world, ui, audio) {
       if (world.buildings.some((b) => b.style === 'church' && Math.hypot(b.cx - s.focus.x, b.cz - s.focus.z) < 120)) audio.bell();
     }
     if (hawkT <= 0) { hawkT = 30 + Math.random() * 40; if (s.mode === 'walk' && hr > 7 && hr < 21) ui.dialogue(HAWK[Math.floor(Math.random() * HAWK.length)]); }
-    // ---- dogs: wanderers stroll, everyone barks at fast vehicles
-    dogToast -= dt;
-    for (const d of dogs) {
-      const dd = Math.hypot(d.m.position.x - s.focus.x, d.m.position.z - s.focus.z);
-      if (!d.sleeping && dd < 200) {
-        d.s += d.dir * 0.6 * dt; if (d.s < 0 || d.s > d.e.len) d.dir *= -1;
-        d.m.position.set(d.e.ax + d.e.dx * d.s + d.e.dz * d.lat, 0, d.e.az + d.e.dz * d.s - d.e.dx * d.lat); d.m.rotation.y = Math.atan2(d.e.dx * d.dir, d.e.dz * d.dir);
-      }
-      d.barkCd -= dt;
-      if (dd < 9 && s.speed > 6 && d.barkCd <= 0) { d.barkCd = 6; audio.bark(); if (dogToast <= 0) { dogToast = 60; ui.toast('Woof!', 'A street dog chased you for 20 metres. Standard procedure.', 'paw'); } }
-    }
     // ---- Deepavali nights
     const night = s.lights > 0.4;
     if (diyas) diyas.visible = night;

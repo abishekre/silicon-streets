@@ -84,7 +84,7 @@ export function createUI(world, actions, input) {
   function menu({ title, kn, items, foot = '' }) {
     const el = $('menu');
     el.innerHTML = `<div class="mh"><div><div class="mt">${title}</div><div class="mk kn">${kn || ''}</div></div><button class="xbtn" aria-label="Close">${icon('close')}</button></div>
-      <div class="mi">${items.map((it, i) => `<button data-i="${i}"><span class="n"><kbd>${i + 1}</kbd> ${it.name}</span><span class="p">₹${it.price}</span><span class="d">${it.desc || ''}</span></button>`).join('')}</div>
+      <div class="mi">${items.map((it, i) => `<button data-i="${i}"><span class="n"><kbd>${i + 1}</kbd> ${it.name}</span><span class="p">${it.price != null ? `₹${it.price}` : ''}</span><span class="d">${it.desc || ''}</span></button>`).join('')}</div>
       <div class="mf">${foot} · <kbd>Esc</kbd> to close</div>`;
     $('menuWrap').classList.add('open'); menuOpen = true;
     api.onOpened && api.onOpened('menu');
@@ -202,7 +202,9 @@ export function createUI(world, actions, input) {
     $('rating').title = `Rating ${st} of 5`;
     $('earned').textContent = `₹${r.earned} earned · ${r.rides} ride${r.rides === 1 ? '' : 's'}`;
     $('collect').textContent = `${d.collected}/${d.totalCollect}`;
-    $('money').textContent = `₹${Math.round(d.wallet.money)}`;
+    // what you owe (fines you couldn't pay, the garage loan) sits next to what you have
+    const owed = Math.round((d.wallet.debt || 0) + (d.wallet.loan || 0));
+    $('money').innerHTML = `₹${Math.round(d.wallet.money)}${owed ? `<span class="owed" title="Owed: Traffic Police dues ₹${Math.round(d.wallet.debt || 0)}, garage loan ₹${Math.round(d.wallet.loan || 0)}">−₹${owed}</span>` : ''}`;
     put('respect', `${icon('respect')}${Math.round(d.wallet.respect)}`); $('respect').className = d.wallet.respect < 30 ? 'low' : '';
     if (!cache.energy) { cache.energy = 1; $('energy').insertAdjacentHTML('afterbegin', icon('bolt')); }
     $('vhealth').style.width = `${d.health}%`; $('vhealth').style.background = d.health < 30 ? '#ff5252' : d.health < 60 ? '#ffb300' : '#3ddc84';
