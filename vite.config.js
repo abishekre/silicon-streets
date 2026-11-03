@@ -4,4 +4,6 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   base: './',
   build: { target: 'es2020', chunkSizeWarningLimit: 1500, sourcemap: false },
+  // the map worker (src/world-worker.js) is an ES module that loads its pieces with import()
+  worker: { format: 'es' },
 });

@@ -27,6 +27,7 @@ import { createTow } from './tow.js';
 import { createBeam } from './people.js';
 import { createAudio } from './audio.js';
 import { createUI } from './ui.js';
+import { loadMap } from './map-data.js';
 import { gpuInfo, createGpuTimer, instrumentPasses, createBenchmark } from './perf.js';
 import { createInput } from './input.js';
 import { createOverlays } from './overlay.js';
@@ -47,18 +48,25 @@ async function loadFonts() {
   await Promise.race([Promise.all(fonts.map((f) => document.fonts.load(f, 'Aಕನ್ನಡ'))), new Promise((r) => setTimeout(r, 3000))]).catch(() => {});
 }
 
-// the map is an index (roads, parks, metro, landmarks) plus one file per 220 m tile (buildings, places), from tools/tile_map.py
-async function loadMap() {
-  const get = (f) => fetch('data/map/' + f).then((r) => { if (!r.ok) throw new Error(`map ${f}: ${r.status}`); return r.json(); });
-  const index = await get('index.json');
-  const tiles = await Promise.all(Object.keys(index.tiles).map((k) => get(k + '.json')));
-  return { ...index, buildings: tiles.flatMap((t) => t.buildings), pois: tiles.flatMap((t) => t.pois) };
+// map chunks are built in a worker (src/world-worker.js) that loads the same map and runs the same builder alongside
+// this page; resolves to the worker once it's ready, or null if workers aren't available (then chunks build here)
+function startMapWorker() {
+  try {
+    const w = new Worker(new URL('./world-worker.js', import.meta.url), { type: 'module' });
+    const ready = new Promise((done) => {
+      w.addEventListener('message', (e) => { if (e.data.type === 'ready') done(w); else if (e.data.type === 'error') { console.warn('[silicon-streets] map worker failed', e.data.message); done(null); } });
+      w.addEventListener('error', (e) => { console.warn('[silicon-streets] map worker unavailable', e.message); done(null); });
+    });
+    w.postMessage({ type: 'init', base: new URL('data/map/', location.href).href });
+    return ready;
+  } catch (e) { return Promise.resolve(null); }
 }
 
 async function init() {
   document.title = GAME.title; $('gameTitle').innerHTML = `${GAME.line1}<br><span>${GAME.line2}</span>`;
   const setLoading = (t) => { const l = $('loading'); if (l) l.textContent = t; };
   setLoading('Loading OpenStreetMap data…');
+  const mapWorker = startMapWorker();
   const [data] = await Promise.all([loadMap(), loadFonts()]);
   setLoading(`Placing ${data.buildings.length.toLocaleString('en-IN')} buildings…`);
   await new Promise((r) => setTimeout(r, 30));
@@ -892,7 +900,9 @@ async function init() {
   applyCfg();
   // meshes for the chunks in view of where you start; the rest stream in as you move
   const tp = performance.now();
-  world.prime(player.pos.x, player.pos.z, tierCfg().far); // you start next to your vehicle
+  world.prime(player.pos.x, player.pos.z, tierCfg().far); // you start next to your vehicle (built here: quicker than waiting)
+  // from then on chunks are built by the worker as you move, once it has its copy of the map ready
+  mapWorker.then((w) => w && world.useWorker(w));
   console.info(`[silicon-streets] ${world.streamInfo.live}/${world.streamInfo.total} chunks built at start in ${Math.round(performance.now() - tp)} ms`);
   // compile every shader up front so the first headlight / rain / interior doesn't stutter
   renderer.compile(scene, camera);

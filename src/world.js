@@ -41,7 +41,9 @@ function themeFor(p) {
 }
 const titleCase = (s) => s.toLowerCase().replace(/(^|[\s+])\S/g, (m) => m.toUpperCase());
 
-export function buildWorld(scene, data) {
+export function buildWorld(scene, data, opts = {}) {
+  // a worker (src/world-worker.js) running this same builder can make the chunk geometry instead of the main thread
+  let remote = null, building = true;
   const rng = makeRng(11);
   const cull = [];
   const chunks = new Map();
@@ -51,13 +53,14 @@ export function buildWorld(scene, data) {
   const chunkOf = (x, z) => {
     const i = Math.floor(x / CH), j = Math.floor(z / CH), k = i + ',' + j;
     let c = chunks.get(k);
-    if (!c) chunks.set(k, c = { i, j, x: (i + 0.5) * CH, z: (j + 0.5) * CH, b: null, ops: [], trees: [], lamps: [], cables: [], bulbs: [], live: null });
+    if (!c) chunks.set(k, c = { i, j, x: (i + 0.5) * CH, z: (j + 0.5) * CH, b: null, ops: [], sops: [], geo: null, req: false, trees: [], lamps: [], cables: [], bulbs: [], live: null });
     return c;
   };
   // inside a build step: bc = the chunk being built, cr = its own random stream (same result whatever order chunks load in)
   let bc = null, cr = rng;
   const B = (key) => bc.b[key] || (bc.b[key] = new Batch());
-  const later = (x, z, fn) => { chunkOf(x, z).ops.push(fn); };
+  // ops: the map's own geometry (the worker can build these); sops: scenery other modules add later (always built here)
+  const later = (x, z, fn) => { const c = chunkOf(x, z); (building ? c.ops : c.sops).push(fn); };
   // one-off pieces (landmarks, carts, kiosks) are made once and copied into the chunk each time it loads
   const keep = (key, x, z, g) => later(x, z, () => B(key).stamp(g, 0, 0, 0));
   const inB = (x, z, m = 0) => x > BOUNDS.x1 - m && x < BOUNDS.x2 + m && z > BOUNDS.z1 - m && z < BOUNDS.z2 + m;
@@ -860,12 +863,9 @@ export function buildWorld(scene, data) {
       scene.add(bm);
     }
     if (bm._nextVertexStart + need > bm._maxVertexCount) {
+      // compact first (moves only what has to move); growing re-uploads the whole buffer, so leave plenty of room
       bm.optimize();
-      // three r170's optimize() moves the data but never flags it for upload or refreshes the draw ranges, and doesn't rewind an empty buffer
-      for (const k in bm.geometry.attributes) bm.geometry.attributes[k].needsUpdate = true;
-      bm._visibilityChanged = true;
-      if (!bm._geometryInfo.some((g) => g.active)) bm._nextVertexStart = 0;
-      if (bm._nextVertexStart + need > bm._maxVertexCount) { bm.setGeometrySize(Math.ceil((bm._nextVertexStart + need) * 1.5), 0); bm._visibilityChanged = true; }
+      if (bm._nextVertexStart + need > bm._maxVertexCount) { bm.setGeometrySize(Math.ceil((bm._nextVertexStart + need) * 2), 0); bm._visibilityChanged = true; }
     }
     return bm;
   }
@@ -873,22 +873,25 @@ export function buildWorld(scene, data) {
   // runs a chunk's build steps until `until` (a performance.now() deadline), and can pick up where it stopped next frame;
   // returns true once the chunk's meshes are in the scene
   function buildChunk(c, until = Infinity) {
+    // with the worker, the map's own geometry is built there: ask once, and finish when it has arrived
+    if (remote && c.ops.length && !c.geo) { if (!c.req) { c.req = true; remote.postMessage({ type: 'chunk', id: c.i + ',' + c.j }); } return false; }
     if (!c.b) { c.b = {}; c.opI = 0; c.rng = makeRng((c.i * 73856093) ^ (c.j * 19349663) ^ 11); c.ms = 0; }
     let t0 = performance.now();
     bc = c; cr = c.rng;
-    while (c.opI < c.ops.length) { c.ops[c.opI++](); if ((c.opI & 7) === 0 && performance.now() > until) break; }
+    const ops = c.geo ? c.sops : c.ops.concat(c.sops);
+    while (c.opI < ops.length) { ops[c.opI++](); if ((c.opI & 7) === 0 && performance.now() > until) break; }
     bc = null;
-    if (c.opI < c.ops.length) { cr = rng; c.ms += performance.now() - t0; return false; }
+    if (c.opI < ops.length) { cr = rng; c.ms += performance.now() - t0; return false; }
     c.ms += performance.now() - t0; t0 = performance.now();
     const base = [], det = [], ins = [];
     const entry = { x: c.x, z: c.z, r: CH * 0.72, ins, far: null, bat: [] };
-    for (const key in c.b) {
-      if (c.b[key].empty) continue;
-      const geo = c.b[key].build(), bm = pool(key, geo.attributes.position.count);
-      const gid = bm.addGeometry(geo);
+    const far = {}; if (c.geo) for (const g of c.geo) far[g.key] = g;
+    for (const key of new Set([...Object.keys(c.b), ...Object.keys(far)])) {
+      const geo = joinGeo(c.b[key], far[key]); if (!geo) continue;
+      const bm = pool(key, geo.attributes.position.count), gid = bm.addGeometry(geo);
       entry.bat.push({ bm, gid, id: bm.addInstance(gid), det: DETAIL.has(key), vis: true }); geo.dispose();
     }
-    c.b = null; bc = null;
+    c.b = null; c.geo = null; bc = null;
     // trees, lamps and bulbs go into the map-wide kits (one draw call per kind, not per chunk)
     const put = (K, det = false, lod = false, col = null) => { const id = K.bm.addInstance(K.ids[0]); K.bm.setMatrixAt(id, m4); if (col) K.bm.setColorAt(id, col); ins.push({ K, id, det, lod, vis: true }); };
     for (const t of c.trees) {
@@ -910,6 +913,40 @@ export function buildWorld(scene, data) {
     if (view.cam) cullOne(entry, view);
     const fin = performance.now() - t0; buildMs.push(c.ms + fin); finMs.push(fin); if (buildMs.length > 60) { buildMs.shift(); finMs.shift(); }
     return true;
+  }
+  // this chunk's own batch plus the worker's arrays for the same material, as one geometry
+  const arraysGeo = (p, n, u, col) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('normal', new THREE.BufferAttribute(n, 3)); g.setAttribute('uv', new THREE.BufferAttribute(u, 2)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); return g; };
+  function joinGeo(b, r) {
+    const nb = b && !b.empty, nr = r && r.pos.length;
+    if (!nb && !nr) return null;
+    if (!nr) return b.build();
+    if (!nb) return arraysGeo(r.pos, r.nor, r.uv, r.col);
+    const cat = (a, t) => { const o = new Float32Array(a.length + t.length); o.set(a); o.set(t, a.length); return o; };
+    return arraysGeo(cat(b.pos, r.pos), cat(b.nor, r.nor), cat(b.uv, r.uv), cat(b.col, r.col));
+  }
+  // worker side: run a chunk's build steps and hand back plain arrays per material
+  function geometryFor(id) {
+    const c = chunks.get(id); if (!c) return [];
+    bc = c; c.b = {}; cr = makeRng((c.i * 73856093) ^ (c.j * 19349663) ^ 11);
+    for (const op of c.ops) op();
+    const out = [];
+    for (const key in c.b) { const b = c.b[key]; if (!b.empty) out.push({ key, pos: new Float32Array(b.pos), nor: new Float32Array(b.nor), uv: new Float32Array(b.uv), col: new Float32Array(b.col) }); }
+    c.b = null; bc = null; cr = rng;
+    return out;
+  }
+  // page side: hand chunk building to a ready worker. If it fails, everything falls back to building here.
+  function useWorker(w) {
+    remote = w;
+    w.addEventListener('message', (e) => {
+      const m = e.data;
+      if (m.type === 'chunk') {
+        const c = chunks.get(m.id); if (!c) return;
+        c.geo = m.geo; c.req = false;
+      } else if (m.type === 'error') {
+        console.warn('[silicon-streets] map worker failed, building chunks here', m.message);
+        remote = null; for (const c of chunks.values()) c.req = false;
+      }
+    });
   }
   function dropChunk(c) {
     const e = c.live; c.live = null;
@@ -934,15 +971,17 @@ export function buildWorld(scene, data) {
       }
       queue.sort((a, b) => a.d - b.d);
     }
-    // nearest first, about 3 ms of it per frame; anything right around you (after a teleport) is built at once
+    // nearest first, about 3 ms of it per frame; anything right around you (after a teleport) is built at once.
+    // With the worker, up to 6 chunks are being built there at a time and this thread only finishes the ones that are back.
     const until = performance.now() + 3;
-    while (queue.length) {
-      const { c, d } = queue[0];
-      if (c.live) { queue.shift(); continue; }
-      const urgent = d < 260;
-      if (!buildChunk(c, urgent ? Infinity : until)) break;
-      queue.shift();
+    let asked = 0;
+    for (const it of queue) {
+      const c = it.c;
+      if (c.live) continue;
+      if (remote && c.ops.length && !c.geo) { if (c.req || asked < 6) { buildChunk(c); asked++; } continue; }
+      const urgent = it.d < 260;
       if (!urgent && performance.now() > until) break;
+      if (!buildChunk(c, urgent ? Infinity : until)) break;
     }
   }
   // trees, lamps, light pools and bulbs: one BatchedMesh per kind for the whole map (sized for every one of them),
@@ -974,9 +1013,11 @@ export function buildWorld(scene, data) {
   // before the first frame: everything in view of the start point, plus an empty mesh of every kind
   // so all shaders compile on the loading screen instead of stuttering when a new kind first comes into view
   function prime(x, z, far) {
-    streamed = [...chunks.values()].filter((c) => c.ops.length || c.trees.length || c.lamps.length || c.cables.length || c.bulbs.length);
+    streamed = [...chunks.values()].filter((c) => c.ops.length || c.sops.length || c.trees.length || c.lamps.length || c.cables.length || c.bulbs.length);
     makeKits();
     for (const c of streamed) if (!c.live && Math.hypot(c.x - x, c.z - z) < loadR(far)) buildChunk(c);
+    // room for chunks streaming in while others are still loaded, so the buffers rarely have to grow mid-game
+    for (const bm of Object.values(pools)) if (bm._maxVertexCount < bm._nextVertexStart * 2.5) bm.setGeometrySize(Math.ceil(bm._nextVertexStart * 2.5), 0);
     for (const key of ['side', 'road', 'path', 'grass', 'water', 'plaza', 'marking', 'kerb', 'bldA', 'bldB', 'glass', 'landmark', 'concrete', 'shop', 'sign', 'poiSign', 'billboard', 'pothole', 'puddle', 'prop', ...extraKeys]) pool(key, 0);
     const warm = new THREE.Group();
     const lines = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute([0, -99, 0, 0, -99, 0], 3)), M.cable); lines.frustumCulled = false; warm.add(lines);
@@ -1116,8 +1157,9 @@ export function buildWorld(scene, data) {
     }
   }
 
+  building = false; // from here on, scenery added by other modules goes to sops
   return {
-    items: (x, z, r, out) => grid.query(x, z, r, out), prime, addStatic,
+    items: (x, z, r, out) => grid.query(x, z, r, out), prime, addStatic, geometryFor, useWorker,
     get streamInfo() { return { live: streamed.filter((c) => c.live).length, total: streamed.length, queued: queue.length, buildMs, finMs }; },
     collide, solidAt, surfaceAt, zoneAt, update, nearestRoad, insideBuilding, addPoly, addCircle, segGrid, nodes, junctionR, groundAt, inside, ladders, vidhanaTop,
     potholes, buildings, roads, parks, cubbon, vidhana, stadium, ubc, stations: kiosks, doors, vendors, benches, tracks,
