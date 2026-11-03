@@ -1,29 +1,52 @@
 import { WEATHERS, WEATHER_ORDER } from './weather.js';
+import { icon } from './icons.js';
+import { ACTIONS, FIXED, keyName } from './input.js';
 
 const $ = (id) => document.getElementById(id);
 
-export function createUI(world, actions) {
+export function createUI(world, actions, input) {
+  const kbd = (a) => input.kbd(a);
+  // layers call this when they close themselves (picked a map pin, bought from a menu) so the overlay stack can pop them
+  const closed = (name) => api.onClosed && api.onClosed(name);
+
+  // ---------- accessibility prefs: UI scale, text size, reduce motion, HUD detail ----------
+  const prefs = { scale: 1, text: 1, reduce: matchMedia('(prefers-reduced-motion: reduce)').matches, hud: 'full' };
+  try { Object.assign(prefs, JSON.parse(localStorage.getItem('blr.ui') || '{}')); } catch (e) { /* storage blocked */ }
+  function applyPrefs(save = true) {
+    const r = document.documentElement.style; r.setProperty('--ui', prefs.scale); r.setProperty('--tk', prefs.text);
+    document.body.classList.toggle('reduce-motion', !!prefs.reduce);
+    document.body.classList.toggle('hud-min', prefs.hud === 'min'); document.body.classList.toggle('hud-off', prefs.hud === 'off');
+    if (save) try { localStorage.setItem('blr.ui', JSON.stringify(prefs)); } catch (e) { /* private mode */ }
+  }
+  applyPrefs(false);
+
   const toasts = $('toasts');
-  function toast(title, body = '', kind = '') {
+  function toast(title, body = '', ic = 'info', kind = '') {
     const el = document.createElement('div');
     el.className = 'toast ' + kind;
-    el.innerHTML = `<div class="t">${title}</div>${body ? `<div class="b">${body}</div>` : ''}<span class="tx">×</span>`;
+    el.innerHTML = `${icon(ic)}<div class="t">${title}</div>${body ? `<div class="b">${body}</div>` : ''}<span class="tx">${icon('close')}</span>`;
     el.onclick = () => el.remove();
     toasts.prepend(el);
     while (toasts.children.length > 3) toasts.lastChild.remove();
-    setTimeout(() => el.classList.add('out'), 3600);
-    setTimeout(() => el.remove(), 4100);
+    setTimeout(() => el.classList.add('out'), 4200);
+    setTimeout(() => el.remove(), 4700);
   }
+
+  // ---------- right-middle slot: one job offer or one compact card at a time ----------
+  const side = { offer: false, queue: [] };
+  const cardEl = $('card');
+  const compactShown = () => cardEl.classList.contains('show') && cardEl.classList.contains('compact');
+  function hideCard() { cardEl.classList.remove('show'); clearTimeout(card._t); if (!side.offer && side.queue.length) setTimeout(() => card(...side.queue.shift()), 400); }
   // compact = side card that doesn't cover the road while driving
-  function card(emoji, title, body, foot, compact = false) {
-    const el = $('card');
-    el.innerHTML = `<div class="e">${emoji}</div><div class="k">PEAK BENGALURU MOMENT</div><div class="t">${title}</div><div class="b">${body}</div><div class="f">${foot} · click or <kbd>X</kbd> to close</div>`;
-    el.classList.toggle('compact', compact);
-    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
-    el.onclick = () => el.classList.remove('show');
-    clearTimeout(card._t); card._t = setTimeout(() => el.classList.remove('show'), compact ? 4500 : 6000);
+  function card(ic, title, body, foot, compact = false) {
+    if (compact && side.offer) { side.queue.push([ic, title, body, foot, compact]); return; }
+    cardEl.innerHTML = `<div class="e">${icon(ic)}</div><div class="k">PEAK BENGALURU MOMENT</div><div class="t">${title}</div><div class="b">${body}</div><div class="f">${foot} · click or ${kbd('dismiss')} to close</div>`;
+    cardEl.classList.toggle('compact', compact);
+    cardEl.classList.remove('show'); void cardEl.offsetWidth; cardEl.classList.add('show');
+    cardEl.onclick = hideCard;
+    clearTimeout(card._t); card._t = setTimeout(hideCard, compact ? 4500 : 6000);
   }
-  function dismissAll() { $('card').classList.remove('show'); toasts.innerHTML = ''; $('dialogue').classList.remove('show'); }
+  function dismissAll() { cardEl.classList.remove('show'); side.queue.length = 0; toasts.innerHTML = ''; $('dialogue').classList.remove('show'); }
   function dialogue(text) {
     const el = $('dialogue');
     el.textContent = text; el.classList.add('show');
@@ -47,21 +70,23 @@ export function createUI(world, actions) {
   let menuOpen = false;
   function menu({ title, kn, items, foot = '' }) {
     const el = $('menu');
-    el.innerHTML = `<div class="mh"><div><div class="mt">${title}</div><div class="mk kn">${kn || ''}</div></div><button class="mx" aria-label="Close">×</button></div>
+    el.innerHTML = `<div class="mh"><div><div class="mt">${title}</div><div class="mk kn">${kn || ''}</div></div><button class="xbtn" aria-label="Close">${icon('close')}</button></div>
       <div class="mi">${items.map((it, i) => `<button data-i="${i}"><span class="n"><kbd>${i + 1}</kbd> ${it.name}</span><span class="p">₹${it.price}</span><span class="d">${it.desc || ''}</span></button>`).join('')}</div>
       <div class="mf">${foot} · <kbd>Esc</kbd> to close</div>`;
-    el.classList.add('open'); menuOpen = true;
-    el.querySelector('.mx').onclick = closeMenu;
-    el.querySelectorAll('.mi button').forEach((b) => (b.onclick = () => { const it = items[+b.dataset.i]; closeMenu(); it.onPick(); }));
+    $('menuWrap').classList.add('open'); menuOpen = true;
+    api.onOpened && api.onOpened('menu');
+    el.querySelector('.xbtn').onclick = () => { closeMenu(); closed('menu'); };
+    el.querySelectorAll('.mi button').forEach((b) => (b.onclick = () => { const it = items[+b.dataset.i]; closeMenu(); closed('menu'); it.onPick(); }));
+    $('menuWrap').onclick = (e) => { if (e.target === $('menuWrap')) { closeMenu(); closed('menu'); } };
     menu.items = items;
   }
-  function closeMenu() { $('menu').classList.remove('open'); menuOpen = false; }
-  function menuKey(code) {
+  function closeMenu() { $('menuWrap').classList.remove('open'); menuOpen = false; }
+  function menuKey(e) {
     if (!menuOpen) return false;
-    if (code === 'Escape' || code === 'KeyE') { closeMenu(); return true; }
-    const n = parseInt(code.replace('Digit', ''), 10);
-    if (n >= 1 && menu.items && menu.items[n - 1]) { const it = menu.items[n - 1]; closeMenu(); it.onPick(); }
-    return true;
+    if (input.is(e.code, 'interact')) { closeMenu(); closed('menu'); return true; }
+    const n = parseInt(e.code.replace('Digit', ''), 10);
+    if (n >= 1 && menu.items && menu.items[n - 1]) { const it = menu.items[n - 1]; closeMenu(); closed('menu'); it.onPick(); }
+    return e.code !== 'Escape';
   }
   async function fade(fn, text = '') {
     fade.onStart && fade.onStart();
@@ -130,7 +155,7 @@ export function createUI(world, actions) {
     mctx.fillStyle = '#ffffff'; mctx.strokeStyle = '#000'; mctx.lineWidth = 2;
     mctx.beginPath(); mctx.moveTo(0, -10); mctx.lineTo(7, 7); mctx.lineTo(0, 3.5); mctx.lineTo(-7, 7); mctx.closePath(); mctx.fill(); mctx.stroke();
     mctx.restore();
-    mctx.fillStyle = 'rgba(255,255,255,0.8)'; mctx.font = '700 11px "Space Grotesk"'; mctx.textAlign = 'center'; mctx.fillText('N', W / 2, 13);
+    mctx.fillStyle = 'rgba(255,255,255,0.85)'; mctx.font = '700 11px "Space Grotesk"'; mctx.textAlign = 'center'; mctx.fillText('N', W / 2, 13);
   }
 
   // ---------- HUD ----------
@@ -139,40 +164,82 @@ export function createUI(world, actions) {
     const ap = hh >= 12 ? 'PM' : 'AM', h12 = ((hh + 11) % 12) + 1;
     return `${h12}:${String(mm2).padStart(2, '0')} <small>${ap}</small>`;
   }
-  let fpsN = 0, fpsT = 0;
-  function frame(rawDt) {
-    fpsN++; fpsT += rawDt;
-    if (fpsT > 0.5) { $('fps').textContent = `${Math.round(fpsN / fpsT)} fps`; fpsN = 0; fpsT = 0; }
-  }
+  let fpsN = 0, fpsT = 0, fps = 0;
+  function frame(rawDt) { fpsN++; fpsT += rawDt; if (fpsT > 0.5) { fps = Math.round(fpsN / fpsT); fpsN = 0; fpsT = 0; } }
+  const cache = {};
+  const put = (id, html) => { if (cache[id] !== html) { cache[id] = html; $(id).innerHTML = html; } };
+  $('collectBox').insertAdjacentHTML('afterbegin', icon('star', 'fill'));
+  // while driving, the wallet and the collect count fade out after 3 s without a change
+  const idle = { wallet: '', walletT: 0, col: '', colT: 0 };
   function update(d) {
-    $('clock').innerHTML = `<small>${d.dayName || ''}</small> ${fmtTime(d.hours)}`;
+    const now = performance.now();
+    put('clock', `<small>${d.dayName || ''}</small> ${fmtTime(d.hours)}`);
     const w = WEATHERS[d.weather];
-    $('wx').textContent = `${w.icon} ${w.label}${d.temp != null ? ` · ${d.temp}°C` : ''}`;
+    put('wx', `${icon(w.icon)}<span>${w.label}${d.temp != null ? ` · ${d.temp}°C` : ''}</span>`);
     $('live').classList.toggle('on', d.live);
     $('speed').textContent = Math.round(Math.abs(d.speed) * 3.6);
     $('vname').textContent = d.vehicle;
     const r = d.ride;
     $('meter').classList.toggle('on', r.state === 'riding');
-    $('meter').style.display = d.mode === 'drive' && d.vehicleType === 'auto' ? '' : 'none';
+    $('meter').style.display = d.vehicleType === 'auto' ? '' : 'none';
     $('speedo').style.display = d.mode === 'drive' ? '' : 'none';
     $('fare').textContent = `₹${Math.round(r.fare)}`;
-    $('rating').textContent = '★'.repeat(Math.round(r.rating)) + '☆'.repeat(5 - Math.round(r.rating));
+    const st = Math.round(r.rating);
+    put('rating', Array.from({ length: 5 }, (_, i) => icon('star', i < st ? 'fill' : 'off')).join(''));
+    $('rating').title = `Rating ${st} of 5`;
     $('earned').textContent = `₹${r.earned} earned · ${r.rides} ride${r.rides === 1 ? '' : 's'}`;
     $('collect').textContent = `${d.collected}/${d.totalCollect}`;
     $('money').textContent = `₹${Math.round(d.wallet.money)}`;
-    $('respect').textContent = `🙏 ${Math.round(d.wallet.respect)}`; $('respect').className = d.wallet.respect < 30 ? 'low' : '';
+    put('respect', `${icon('respect')}${Math.round(d.wallet.respect)}`); $('respect').className = d.wallet.respect < 30 ? 'low' : '';
+    if (!cache.energy) { cache.energy = 1; $('energy').insertAdjacentHTML('afterbegin', icon('bolt')); }
     $('vhealth').style.width = `${d.health}%`; $('vhealth').style.background = d.health < 30 ? '#ff5252' : d.health < 60 ? '#ffb300' : '#3ddc84';
     $('energyBar').style.width = `${d.wallet.energy}%`;
     $('energyBar').style.background = d.wallet.energy < 20 ? '#ff5252' : d.wallet.energy < 45 ? '#ffb300' : '#3ddc84';
+    const wk = `${Math.round(d.wallet.money)}|${Math.round(d.wallet.respect)}|${Math.round(d.wallet.energy / 10)}`;
+    if (wk !== idle.wallet) { idle.wallet = wk; idle.walletT = now; }
+    if (d.collected !== idle.col) { idle.col = d.collected; idle.colT = now; }
+    const driving = d.mode === 'drive';
+    $('walletBox').classList.toggle('idle', driving && now - idle.walletT > 3000);
+    $('collectBox').classList.toggle('idle', driving && now - idle.colT > 3000);
     if (document.activeElement !== $('timeSlider')) $('timeSlider').value = d.hours;
     $('timeVal').textContent = fmtTime(d.hours).replace(/<[^>]+>/g, '');
   }
 
-  // ---------- settings ----------
-  const panel = $('settings');
-  function togglePanel(force) { panel.classList.toggle('open', force ?? !panel.classList.contains('open')); }
-  $('gear').onclick = () => togglePanel();
-  $('closeSettings').onclick = () => togglePanel(false);
+  // ---------- pause menu ----------
+  const PAUSE = [
+    ['resume', 'play', 'Resume', () => '<kbd>Esc</kbd>'], ['map', 'map', 'Map', () => kbd('map')], ['settings', 'sliders', 'Settings', () => ''],
+    ['controls', 'keyboard', 'Controls', () => kbd('controls')], ['save', 'save', 'Save game', () => ''], ['quit', 'exit', 'Quit to title', () => ''],
+  ];
+  function showPause(sub = '') {
+    $('pauseSub').textContent = sub;
+    const pm = $('pause').querySelector('.pm');
+    pm.innerHTML = PAUSE.map(([a, ic, l, k], i) => `<button data-a="${a}"${i ? '' : ' class="first"'}>${icon(ic)}${l}${k()}</button>`).join('');
+    pm.onclick = (e) => { const b = e.target.closest('button'); if (b) actions.pauseAction(b.dataset.a); };
+    $('pause').classList.add('open');
+    pm.querySelector('button').focus();
+  }
+  const hidePause = () => $('pause').classList.remove('open');
+  // arrow keys walk the focused buttons in any modal
+  function focusStep(root, e) {
+    if (e.code !== 'ArrowDown' && e.code !== 'ArrowUp') return false;
+    const bs = [...root.querySelectorAll('button')].filter((b) => b.offsetParent), i = bs.indexOf(document.activeElement);
+    bs[(i + (e.code === 'ArrowDown' ? 1 : -1) + bs.length) % bs.length]?.focus(); e.preventDefault(); return true;
+  }
+  const pauseKey = (e) => focusStep($('pause'), e);
+
+  // ---------- settings: a centred modal with tabs ----------
+  const TABS = [['graphics', 'gear', 'Graphics'], ['gameplay', 'auto', 'Gameplay'], ['audio', 'sound', 'Audio'], ['controls', 'keyboard', 'Controls'], ['access', 'eye', 'Accessibility']];
+  $('sTabs').innerHTML = TABS.map(([t, ic, l]) => `<button role="tab" data-t="${t}">${icon(ic)}${l}</button>`).join('');
+  function tab(t) {
+    for (const b of $('sTabs').children) { b.classList.toggle('sel', b.dataset.t === t); b.setAttribute('aria-selected', b.dataset.t === t); }
+    for (const s of document.querySelectorAll('.sbody section')) s.classList.toggle('sel', s.dataset.t === t);
+    if (t === 'controls') renderKeys();
+  }
+  $('sTabs').onclick = (e) => { const b = e.target.closest('button'); if (b) tab(b.dataset.t); };
+  $('closeSettings').innerHTML = icon('close');
+  $('closeSettings').onclick = () => { hideSettings(); closed('settings'); };
+  function showSettings(t = 'graphics') { $('settings').classList.add('open'); tab(t); $('statsKey').innerHTML = kbd('stats'); }
+  function hideSettings() { cancelBind(); $('settings').classList.remove('open'); }
   $('timeSlider').oninput = (e) => actions.setTime(parseFloat(e.target.value));
   const seg = (id, values, on) => {
     const el = $(id);
@@ -181,8 +248,8 @@ export function createUI(world, actions) {
     return (v) => el.querySelectorAll('button').forEach((b) => b.classList.toggle('sel', b.dataset.v === String(v)));
   };
   const selSpeed = seg('speedSeg', [['0', 'Pause'], ['1', '1×'], ['60', '60×'], ['360', '360×']], (v) => actions.setTimeSpeed(+v));
-  const selWx = seg('wxSeg', WEATHER_ORDER.map((k) => [k, `${WEATHERS[k].icon} ${WEATHERS[k].label}`]), (v) => actions.setWeather(v));
-  const selVeh = seg('vehSeg', [['auto', '🛺 Auto'], ['scooter', '🛵 Scooter'], ['car', '🚗 Car']], (v) => actions.setVehicle(v));
+  const selWx = seg('wxSeg', WEATHER_ORDER.map((k) => [k, `${icon(WEATHERS[k].icon)} ${WEATHERS[k].label}`]), (v) => actions.setWeather(v));
+  const selVeh = seg('vehSeg', [['auto', `${icon('auto')} Auto`], ['scooter', `${icon('scooter')} Scooter`], ['car', `${icon('car')} Car`]], (v) => actions.setVehicle(v));
   const selCam = seg('camSeg', [['chase', 'Chase'], ['first', 'First person'], ['cine', 'Cinematic']], (v) => actions.setCamera(v));
   $('liveBtn').onclick = () => actions.toggleLive();
   const selQ = seg('qSeg', [['auto', 'Auto'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['ultra', 'Ultra']], (v) => actions.setQuality(v));
@@ -204,29 +271,80 @@ export function createUI(world, actions) {
   }
   $('gDyn').onchange = (e) => actions.toggleDynRes(e.target.checked);
   $('stats').onchange = (e) => actions.toggleStats(e.target.checked);
+  // audio: one slider per mixer bus
+  const VOL = [['master', 'Master'], ['radio', 'Radio'], ['traffic', 'Traffic'], ['ambience', 'Ambience (rain, crowds, birds)'], ['horn', 'Your horn']];
+  const vol = actions.volume();
+  $('volList').innerHTML = VOL.map(([b, l]) => `<div class="row"><span>${l}</span><input type="range" min="0" max="1" step="0.05" data-b="${b}" value="${vol[b]}" aria-label="${l} volume"><span class="v">${Math.round(vol[b] * 100)}%</span></div>`).join('');
+  $('volList').oninput = (e) => { const b = e.target.dataset.b; if (!b) return; actions.setVolume(b, +e.target.value); e.target.nextElementSibling.textContent = `${Math.round(e.target.value * 100)}%`; };
+  // accessibility
+  $('uiScale').value = prefs.scale; $('uiScaleV').textContent = `${Math.round(prefs.scale * 100)}%`;
+  $('uiScale').oninput = (e) => { prefs.scale = +e.target.value; $('uiScaleV').textContent = `${Math.round(prefs.scale * 100)}%`; applyPrefs(); };
+  const selText = seg('textSeg', [['0.875', 'Small'], ['1', 'Normal'], ['1.125', 'Large'], ['1.25', 'Extra large']], (v) => { prefs.text = +v; applyPrefs(); selText(v); });
+  const selHud = seg('hudSeg', [['full', 'Full'], ['min', 'Minimal'], ['off', 'Off']], (v) => { prefs.hud = v; applyPrefs(); selHud(v); });
+  selText(prefs.text); selHud(prefs.hud);
+  $('reduceMotion').checked = !!prefs.reduce; $('reduceMotion').onchange = (e) => { prefs.reduce = e.target.checked; applyPrefs(); };
+
+  // ---------- controls: click a slot, press a key; conflicts offer a swap ----------
+  let waiting = null; // { action, slot }
+  const LABEL = Object.fromEntries(ACTIONS.map(([a, l]) => [a, l]));
+  function renderKeys() {
+    let g = '', html = '';
+    for (const [a, l, grp] of ACTIONS) {
+      if (grp !== g) { g = grp; html += `<div class="kg">${grp}</div>`; }
+      const ks = input.keys(a);
+      html += `<div class="kr"><span>${l}</span>${[0, 1].map((s) => {
+        const w = waiting && waiting.action === a && waiting.slot === s;
+        return `<button data-a="${a}" data-s="${s}" class="${w ? 'wait' : ks[s] ? '' : 'empty'}" aria-label="${l}, ${s ? 'secondary' : 'primary'} key">${w ? 'Press a key' : keyName(ks[s]) || 'Add'}</button>`;
+      }).join('')}</div>`;
+    }
+    $('keyList').innerHTML = html;
+  }
+  const msg = (html) => { $('keyMsg').innerHTML = html; };
+  function cancelBind() { if (waiting) { waiting = null; renderKeys(); } }
+  $('keyList').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; waiting = { action: b.dataset.a, slot: +b.dataset.s }; msg(`Press a key for <b>${LABEL[waiting.action]}</b>. Esc cancels, Delete clears the slot.`); renderKeys(); };
+  $('keysReset').onclick = () => { input.reset(); waiting = null; msg('All keys are back to their defaults.'); renderKeys(); api.onKeysChanged && api.onKeysChanged(); };
+  function settingsKey(e) {
+    if (!waiting) return false;
+    e.preventDefault();
+    const { action, slot } = waiting;
+    if (e.code === 'Escape') { waiting = null; msg(''); renderKeys(); return true; }
+    if (e.code === 'Delete' || e.code === 'Backspace') { input.bind(action, slot, null); waiting = null; msg(`Cleared.`); renderKeys(); api.onKeysChanged && api.onKeysChanged(); return true; }
+    if (FIXED.includes(e.code)) { msg(`<b>${keyName(e.code)}</b> is reserved (Esc pauses, Tab is for the phone, 1-9 pick menu items). Try another key.`); return true; }
+    const c = input.conflict(action, e.code);
+    waiting = null;
+    if (c) {
+      msg(`<b>${keyName(e.code)}</b> is already used by <b>${LABEL[c.action]}</b>. <button id="kSwap">Swap them</button><button id="kCancel">Cancel</button>`);
+      $('kSwap').onclick = () => { input.bind(action, slot, e.code, c); msg(`Swapped: ${LABEL[action]} is now <b>${keyName(e.code)}</b>.`); renderKeys(); api.onKeysChanged && api.onKeysChanged(); };
+      $('kCancel').onclick = () => msg('');
+    } else { input.bind(action, slot, e.code); msg(`${LABEL[action]} is now <b>${keyName(e.code)}</b>.`); api.onKeysChanged && api.onKeysChanged(); }
+    renderKeys();
+    return true;
+  }
+
   function sync(s) {
     const q = s.quality;
     selSpeed(s.timeSpeed); selQ(q.mode); $('stats').checked = q.stats; selLive(q.cfg.live); $('gDyn').checked = q.dynRes;
     for (const [id, [key]] of Object.entries(GFX)) $(id).value = String(q.cfg[key]);
     $('qNow').textContent = q.mode === 'auto' ? `Auto picked ${q.d.label}` : q.mode === 'custom' ? 'Custom settings' : ''; selWx(s.weather); selVeh(s.vehicle); selCam(s.camera);
     $('liveBtn').classList.toggle('sel', s.live);
-    $('liveBtn').textContent = s.live ? '● LIVE: synced to real Bengaluru' : 'Sync to real Bengaluru time + weather';
+    $('liveBtn').textContent = s.live ? 'LIVE: synced to real Bengaluru' : 'Sync to real Bengaluru time + weather';
   }
-  function toggleHelp(force) { $('help').classList.toggle('open', force ?? !$('help').classList.contains('open')); }
-  $('helpBtn').onclick = () => toggleHelp();
+  // bottom-left: one button into the pause menu (settings live there now)
+  $('menuBtn').innerHTML = `${icon('menu')}Menu <kbd>Esc</kbd>`;
+  $('menuBtn').onclick = () => actions.pauseAction('open');
 
   // ---------- turn-by-turn panel ----------
-  const ARROW = { left: '↰', right: '↱', arrive: '⚑', sharpleft: '⤺', sharpright: '⤻' };
+  const ARROW = { left: 'turn-left', right: 'turn-right', arrive: 'flag', sharpleft: 'sharp-left', sharpright: 'sharp-right', straight: 'straight' };
   let navKey = '';
   function nav(info) {
     const el = $('nav');
     if (!info) { if (navKey) { el.classList.remove('on'); navKey = ''; } return; }
     let html;
-    if (info.rerouting || info.lost) html = '<div class="na">⟳</div><div><div class="nd">Rerouting…</div><div class="ns">Finding a way on the roads</div></div>';
+    if (info.rerouting || info.lost) html = `<div class="na">${icon('reroute')}</div><div><div class="nd">Rerouting…</div><div class="ns">Finding a way on the roads</div></div>`;
     else {
       const tr = info.turn, d = tr.dist < 1000 ? `${Math.max(10, Math.round(tr.dist / 10) * 10)} m` : `${(tr.dist / 1000).toFixed(1)} km`;
       const what = tr.dir === 'arrive' ? `Arrive at ${info.name}` : `Turn ${tr.dir}${tr.road ? ` onto <b>${tr.road}</b>` : ''}`;
-      html = `<div class="na">${ARROW[(tr.sharp ? 'sharp' : '') + tr.dir] || ARROW[tr.dir]}</div><div><div class="nd">${d}</div><div class="ns">${what}</div><div class="ne">${info.name} · ${(info.left / 1000).toFixed(1)} km · ${Math.max(1, Math.round(info.eta))} min</div></div>`;
+      html = `<div class="na">${icon(ARROW[(tr.sharp ? 'sharp' : '') + tr.dir] || ARROW[tr.dir] || 'straight')}</div><div><div class="nd">${d}</div><div class="ns">${what}</div><div class="ne">${info.name} · ${(info.left / 1000).toFixed(1)} km · ${Math.max(1, Math.round(info.eta))} min</div></div>`;
     }
     if (html !== navKey) { el.innerHTML = html; navKey = html; }
     el.classList.add('on');
@@ -234,11 +352,15 @@ export function createUI(world, actions) {
 
   // ---------- full map: pan, zoom, drop a pin ----------
   let mapOpen = false;
+  $('bigmapClose').innerHTML = icon('close'); $('bigmapClear').innerHTML = `${icon('close')} Clear route`;
+  $('bigmapSearch').insertAdjacentHTML('beforebegin', icon('search'));
   function openMap({ focus, markers, route, places, search = [], onPick, onClear }) {
     const el = $('bigmap'), cv = $('bigmapCanvas'), ctx = cv.getContext('2d');
     mapOpen = true; el.classList.add('open');
     const st = { cx: focus.x, cz: focus.z, zoom: 1.1, drag: null, moved: false };
     const dpr = devicePixelRatio;
+    const pick = (p) => { closeMap(); closed('map'); onPick(p); };
+    const clear = () => { closeMap(); closed('map'); onClear(); };
     const draw = () => {
       cv.width = cv.clientWidth * dpr; cv.height = cv.clientHeight * dpr;
       const W = cv.width, H = cv.height, k = st.zoom * dpr;
@@ -246,8 +368,8 @@ export function createUI(world, actions) {
       ctx.fillStyle = '#17191d'; ctx.fillRect(0, 0, W, H);
       ctx.drawImage(bg, X(B.x1), Z(B.z1), (B.x2 - B.x1) * k, (B.z2 - B.z1) * k);
       if (route) { ctx.strokeStyle = '#2f9bff'; ctx.lineWidth = 5 * dpr; ctx.lineJoin = ctx.lineCap = 'round'; ctx.beginPath(); route.pts.forEach(([x, z], i) => (i ? ctx.lineTo(X(x), Z(z)) : ctx.moveTo(X(x), Z(z)))); ctx.stroke(); }
-      ctx.font = `600 ${11 * dpr}px "Space Grotesk"`; ctx.textAlign = 'center';
-      for (const p of places) { ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(X(p.x), Z(p.z), 3.5 * dpr, 0, 7); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillText(p.name, X(p.x), Z(p.z) - 8 * dpr); }
+      ctx.font = `600 ${12 * dpr}px "Space Grotesk"`; ctx.textAlign = 'center';
+      for (const p of places) { ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(X(p.x), Z(p.z), 3.5 * dpr, 0, 7); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.fillText(p.name, X(p.x), Z(p.z) - 8 * dpr); }
       for (const m of markers) { ctx.fillStyle = m.c; ctx.beginPath(); ctx.arc(X(m.x), Z(m.z), (m.big ? 7 : 4.5) * dpr, 0, 7); ctx.fill(); }
       ctx.save(); ctx.translate(X(focus.x), Z(focus.z)); ctx.rotate(-focus.heading + Math.PI); ctx.scale(dpr * 1.4, dpr * 1.4);
       ctx.fillStyle = '#fff'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(7, 7); ctx.lineTo(0, 3.5); ctx.lineTo(-7, 7); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
@@ -255,12 +377,12 @@ export function createUI(world, actions) {
     const toWorld = (e) => { const r = cv.getBoundingClientRect(); return { x: st.cx + (e.clientX - r.left - r.width / 2) / st.zoom, z: st.cz + (e.clientY - r.top - r.height / 2) / st.zoom }; };
     cv.onpointerdown = (e) => { if (e.button !== 0) return; st.drag = { x: e.clientX, y: e.clientY, cx: st.cx, cz: st.cz }; st.moved = false; cv.setPointerCapture(e.pointerId); };
     cv.onpointermove = (e) => { if (!st.drag) return; const dx = e.clientX - st.drag.x, dy = e.clientY - st.drag.y; if (Math.abs(dx) + Math.abs(dy) > 4) st.moved = true; st.cx = st.drag.cx - dx / st.zoom; st.cz = st.drag.cz - dy / st.zoom; draw(); };
-    cv.onpointerup = (e) => { const was = st.drag; st.drag = null; if (was && !st.moved) { const w = toWorld(e); closeMap(); onPick({ ...w, name: 'Dropped pin' }); } };
+    cv.onpointerup = (e) => { const was = st.drag; st.drag = null; if (was && !st.moved) pick({ ...toWorld(e), name: 'Dropped pin' }); };
     cv.onwheel = (e) => { e.preventDefault(); st.zoom = Math.max(0.25, Math.min(4, st.zoom * (e.deltaY > 0 ? 0.87 : 1.15))); draw(); };
-    cv.oncontextmenu = (e) => { e.preventDefault(); closeMap(); onClear(); };
+    cv.oncontextmenu = (e) => { e.preventDefault(); clear(); };
     // search any road, café, restaurant, station or landmark; empty search shows the quick list
     let shown = places;
-    const list = (items) => { shown = items; $('bigmapResults').innerHTML = items.slice(0, 40).map((p, i) => `<button data-i="${i}">${p.icon || '📍'} ${p.name}${p.kind ? `<small>${p.kind}</small>` : ''}</button>`).join('') || '<div class="none">No matches</div>'; };
+    const list = (items) => { shown = items; $('bigmapResults').innerHTML = items.slice(0, 40).map((p, i) => `<button data-i="${i}">${icon(p.icon || 'pin')}<span>${p.name}</span>${p.kind ? `<small>${p.kind}</small>` : ''}</button>`).join('') || '<div class="none">No matches</div>'; };
     const q = $('bigmapSearch'); q.value = '';
     q.oninput = () => {
       const t = q.value.trim().toLowerCase();
@@ -268,27 +390,37 @@ export function createUI(world, actions) {
       const hits = search.filter((p) => p.name.toLowerCase().includes(t)).sort((a, b) => a.name.toLowerCase().indexOf(t) - b.name.toLowerCase().indexOf(t) || a.name.length - b.name.length);
       list(hits);
     };
-    q.onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter' && shown[0]) { closeMap(); onPick(shown[0]); } if (e.key === 'Escape') closeMap(); };
+    // typing in the search box stays in the box; Esc closes, Enter takes the first hit
+    q.onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter' && shown[0]) pick(shown[0]); if (e.key === 'Escape') { closeMap(); closed('map'); } };
     list(places);
-    $('bigmapResults').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; closeMap(); onPick(shown[+b.dataset.i]); };
-    $('bigmapClear').onclick = () => { closeMap(); onClear(); };
-    setTimeout(() => q.focus(), 50);
-    $('bigmapClose').onclick = closeMap;
+    $('bigmapResults').onclick = (e) => { const b = e.target.closest('button'); if (b) pick(shown[+b.dataset.i]); };
+    $('bigmapClear').onclick = clear;
+    if (!matchMedia('(pointer: coarse)').matches) setTimeout(() => q.focus(), 50);
+    $('bigmapClose').onclick = () => { closeMap(); closed('map'); };
     draw();
   }
-  function closeMap() { mapOpen = false; $('bigmap').classList.remove('open'); }
+  function closeMap() { mapOpen = false; $('bigmap').classList.remove('open'); $('bigmapSearch').blur(); }
 
   // ---------- job offer card (rides, deliveries) ----------
   let offerSecs = 20;
   function offer(o) {
     const el = $('offer');
-    if (!o) { el.classList.remove('on'); return; }
-    offerSecs = o.secs;
-    el.innerHTML = `<div class="oh">${o.icon} ${o.app}</div><div class="ot">${o.title}</div><div class="os">${o.sub}</div><div class="obar"><span id="offerBar"></span></div><div class="ob"><button class="ok"><kbd>Y</kbd> Accept</button><button class="no"><kbd>N</kbd> Decline</button></div>`;
+    if (!o) { el.classList.remove('on'); side.offer = false; if (side.queue.length && !compactShown()) setTimeout(() => !side.offer && side.queue.length && card(...side.queue.shift()), 350); return; }
+    // a compact card in the slot goes back in the queue and returns after the offer
+    if (compactShown() && card._last) { side.queue.unshift(card._last); cardEl.classList.remove('show'); clearTimeout(card._t); }
+    side.offer = true; offerSecs = o.secs;
+    el.innerHTML = `<div class="oh">${icon(o.icon)} ${o.app}</div><div class="ot">${o.title}</div><div class="os">${o.sub}</div><div class="obar"><span id="offerBar"></span></div><div class="ob"><button class="ok">${kbd('accept')} Accept</button><button class="no">${kbd('decline')} Decline</button></div>`;
     el.querySelector('.ok').onclick = () => o.onAccept(); el.querySelector('.no').onclick = () => o.onDecline();
     el.classList.add('on');
   }
+  const cardShow = card;
+  function cardTracked(...a) { if (a[4]) card._last = a; cardShow(...a); }
   function offerTick(t) { const b = $('offerBar'); if (b) b.style.width = `${Math.max(0, t / offerSecs) * 100}%`; }
 
-  return { offer, offerTick, nav, openMap, closeMap, get mapOpen() { return mapOpen; }, toast, card, dialogue, prompt, setZone, drawMinimap, update, sync, togglePanel, toggleHelp, fmtTime, menu, closeMenu, frame, dismissAll, menuKey, fade, get menuOpen() { return menuOpen; } };
+  const api = {
+    offer, offerTick, nav, openMap, closeMap, get mapOpen() { return mapOpen; }, toast, card: cardTracked, dialogue, prompt, setZone, drawMinimap, update, sync,
+    showSettings, hideSettings, settingsKey, showPause, hidePause, pauseKey, fmtTime, menu, closeMenu, frame, dismissAll, menuKey, fade, kbd, prefs,
+    get menuOpen() { return menuOpen; }, get fps() { return fps; }, onClosed: null, onOpened: null, onKeysChanged: null,
+  };
+  return api;
 }

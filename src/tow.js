@@ -61,7 +61,7 @@ export function createTow(scene, world, ui, audio) {
       const nr = mode !== 'drive' && world.nearestRoad(player.pos.x, player.pos.z, 10);
       const onLane = nr && nr.d < nr.r.hw - 0.4;
       T.blockT = onLane && blockedBehind > 0 ? T.blockT + dt : Math.max(0, T.blockT - dt * 0.5);
-      if (T.blockT > 40 && !T.warned) { T.warned = true; ui.toast('👮 Traffic police are noting your number', 'Your vehicle is blocking the road. Move it, or it gets towed.'); }
+      if (T.blockT > 40 && !T.warned) { T.warned = true; ui.toast('Traffic police are noting your number', 'Your vehicle is blocking the road. Move it, or it gets towed.', 'police'); }
       if (T.blockT < 20) T.warned = false;
       if (T.blockT > 60 && nr) {
         // pull up in the lane next to your vehicle (towards the middle of the road), coming from behind
@@ -74,12 +74,12 @@ export function createTow(scene, world, ui, audio) {
         L.stop = -1.4; T.s = -60; T.speed = 7; T.wait = 0;
         T.phase = 'coming'; T.t = 0; truck.visible = true; boom.rotation.y = 0;
         audio.hornAt('bus', player.pos.x, player.pos.z, 1.5);
-        ui.toast('🚨 Tow truck on the way', 'Traffic police are coming to tow your vehicle!');
+        ui.toast('Tow truck on the way', 'Traffic police are coming to tow your vehicle!', 'siren');
       }
     }
     if (T.phase === 'none') return;
     // ---- getting back in before it's lifted cancels the tow
-    if (mode === 'drive' && T.phase === 'coming') { T.phase = 'leaving'; T.cancelled = true; T.blockT = 0; ui.toast('😅 Close one', 'You moved it before the tow truck got there.'); }
+    if (mode === 'drive' && T.phase === 'coming') { T.phase = 'leaving'; T.cancelled = true; T.blockT = 0; ui.toast('Close one', 'You moved it before the tow truck got there.', 'smile'); }
     T.t += dt;
     bar.material.color.set(Math.sin(T.t * 12) > 0 ? '#ff2020' : '#2050ff');
     const vehicles = traffic ? traffic.vehicles : [];
@@ -97,7 +97,7 @@ export function createTow(scene, world, ui, audio) {
       player.pos.set(T.from.x + (bedX - T.from.x) * lift, 0, T.from.z + (bedZ - T.from.z) * lift);
       player.heading = T.from.h + (Math.atan2(L.dx, L.dz) - T.from.h) * lift; player.syncMesh();
       player.group.position.y = Math.sin(lift * Math.PI) * 1.6 + lift * 1.55;
-      if (k >= 1) { T.phase = 'leaving'; T.t = 0; T.speed = 0; wallet.money = Math.max(0, wallet.money - 500); ui.toast('🚛 Towed! ₹500 fine', `Collect it from the <b>${yard.name}</b>, or press <b>G</b> to pay ₹500 and have it delivered.`); }
+      if (k >= 1) { T.phase = 'leaving'; T.t = 0; T.speed = 0; wallet.money = Math.max(0, wallet.money - 500); ui.toast('Towed! ₹500 fine', `Collect it from the <b>${yard.name}</b>, or press ${ui.kbd('call')} to pay ₹500 and have it delivered.`, 'truck'); }
     } else if (T.phase === 'leaving') {
       boom.rotation.y = 0;
       drive(dt, vehicles, [], 9);

@@ -27,7 +27,10 @@ import { createTow } from './tow.js';
 import { createBeam } from './people.js';
 import { createAudio } from './audio.js';
 import { createUI } from './ui.js';
+import { createInput } from './input.js';
+import { createOverlays } from './overlay.js';
 import { damp, clamp, angleLerp } from './util.js';
+import { icon } from './icons.js';
 
 const $ = (id) => document.getElementById(id);
 const WELCOME = {
@@ -136,30 +139,33 @@ async function init() {
     player.heading = Math.atan2(s.dx, s.dz); player.park();
   }
 
-  const state = { quality, hours: 17.5, timeSpeed: 60, weather: 'clear', live: false, vehicle: 'auto', camera: 'chase', mode: 'drive', photo: false, started: false };
+  const state = { quality, paused: false, hours: 17.5, timeSpeed: 60, weather: 'clear', live: false, vehicle: 'auto', camera: 'chase', mode: 'drive', photo: false, started: false };
   const actions = {
     setTime: (h) => { state.hours = h; if (state.live) setLive(false); },
     setTimeSpeed: (s) => { state.timeSpeed = s; if (state.live) setLive(false); ui.sync(state); },
     setWeather: (w) => { state.weather = w; weather.set(w); if (state.live) setLive(false); ui.sync(state); },
     setVehicle: (v) => {
-      if (state.mode !== 'drive') { ui.toast('Get in first', 'Walk to your vehicle and press <b>F</b>.'); return; }
+      if (state.mode !== 'drive') { ui.toast('Get in first', `Walk to your vehicle and press ${K('vehicle')}.`, 'auto'); return; }
       state.vehicle = v; player.setType(v);
-      ui.toast(`${v === 'auto' ? '🛺' : v === 'scooter' ? '🛵' : '🚗'} ${VEHICLE_STATS[v].label}`, v === 'auto' ? 'Namma Auto ride requests on. Meter haaki!' : v === 'scooter' ? 'Swiggly / Zoomato delivery orders on.' : 'Oober trip requests on. Surge at rush hour and in rain.'); ui.sync(state);
+      ui.toast(VEHICLE_STATS[v].label, v === 'auto' ? 'Namma Auto ride requests on. Meter haaki!' : v === 'scooter' ? 'Swiggly / Zoomato delivery orders on.' : 'Oober trip requests on. Surge at rush hour and in rain.', v); ui.sync(state);
     },
     setCamera: (c) => { state.camera = c; ui.sync(state); },
     toggleLive: () => setLive(!state.live),
     setQuality: (mode) => {
       quality.mode = mode; quality.dyn = 1;
       applyTier(mode === 'auto' ? quality.tier : mode, false);
-      ui.toast('⚙️ Graphics', mode === 'auto' ? `Auto (now ${tierCfg().label})` : PRESETS[mode].label); ui.sync(state);
+      ui.toast('Graphics', mode === 'auto' ? `Auto (now ${tierCfg().label})` : PRESETS[mode].label, 'gear'); ui.sync(state);
     },
     // one graphics option on its own: the preset becomes "Custom"
     setGfx: (key, v) => { quality.cfg = { ...quality.cfg, [key]: v, label: 'Custom' }; quality.mode = 'custom'; applyCfg(); },
-    setLiveliness: (v) => { quality.cfg = { ...quality.cfg, live: v }; applyCfg(); ui.toast('🚦 Liveliness', ({ calm: 'Calm streets', normal: 'Normal Bengaluru', busy: 'Busy: more traffic and crowds', packed: 'Packed: peak Silk Board energy' })[v]); },
+    setLiveliness: (v) => { quality.cfg = { ...quality.cfg, live: v }; applyCfg(); ui.toast('Liveliness', ({ calm: 'Calm streets', normal: 'Normal Bengaluru', busy: 'Busy: more traffic and crowds', packed: 'Packed: peak Silk Board energy' })[v], 'signal'); },
     toggleDynRes: (on) => { quality.dynRes = on; if (!on) quality.dyn = 1; applyCfg(); },
     toggleStats: (on) => { quality.stats = on ?? !quality.stats; $('perf').classList.toggle('on', quality.stats); ui.sync(state); },
+    volume: () => audio.volume, setVolume: (b, v) => audio.setVolume(b, v),
+    pauseAction: (a) => pauseAction(a),
   };
-  const ui = createUI(world, actions);
+  const input = createInput(), K = (a) => input.kbd(a);
+  const ui = createUI(world, actions, input);
   const tow = createTow(scene, world, ui, audio);
   const hooks = {
     enterInterior: (door) => ui.fade(() => {
@@ -177,14 +183,15 @@ async function init() {
       W.pos.set(s.x + s.nx * 0.6, 0, s.z + s.nz * 0.6); W.yaw = Math.atan2(s.nx, s.nz); camCtl.walkYaw = W.yaw;
       scene.add(walker.root); renderPass.scene = scene; state.mode = 'walk'; document.body.classList.remove('inside');
     }),
-    rest: (h, e, text) => ui.fade(() => { state.hours = (state.hours + h) % 24; game.wallet.energy = Math.min(100, game.wallet.energy + e); ui.toast(`⏳ +${h >= 1 ? h + ' hour' : h * 60 + ' min'}`, text); }, 'Time passes…'),
+    rest: (h, e, text) => ui.fade(() => { state.hours = (state.hours + h) % 24; game.wallet.energy = Math.min(100, game.wallet.energy + e); ui.toast(`+${h >= 1 ? h + ' hour' : h * 60 + ' min'}`, text, 'hourglass'); }, 'Time passes…'),
     // a real ride: platform → viaduct/tunnel → arrival, then out onto the street
     travel: (st, from) => ui.fade(() => {
       state.mode = 'metro'; walker.root.visible = false; document.body.classList.add('inside');
+      ui.toast('Namma Metro', `${K('camera')} switches the view, ${K('interact')} skips the ride.`, 'metro');
       ride.start(from, st, () => ui.fade(() => {
         renderPass.scene = scene; state.mode = 'walk'; walker.root.visible = true; document.body.classList.remove('inside');
         W.pos.set(st.ex + 1.5, 0, st.ez + 1.5); state.hours = (state.hours + 0.1) % 24;
-        ui.toast('🚇 Namma Metro', `You got off at <b>${st.name}</b>. Press <b>G</b> to call your vehicle.`);
+        ui.toast('Namma Metro', `You got off at <b>${st.name}</b>. Press ${K('call')} to call your vehicle.`, 'metro');
       }));
     }, 'Namma Metro'),
   };
@@ -197,12 +204,12 @@ async function init() {
   const pinBeam = createBeam(scene, '#ff4d6d'); pinBeam.visible = false;
   let jobKey = '';
   const places = [
-    ...world.stations.map((s) => ({ name: `${s.name} Metro`, x: s.ex, z: s.ez, icon: '🚇' })),
-    ...(world.vidhana ? [{ name: 'Vidhana Soudha', x: world.vidhana.fx, z: world.vidhana.fz, icon: '🏛️' }] : []),
-    ...(world.stadium ? [{ name: 'Chinnaswamy Stadium', x: world.stadium.x, z: world.stadium.z + world.stadium.r + 15, icon: '🏏' }] : []),
-    ...(world.ubc ? [{ name: 'UB City', x: world.ubc.x, z: world.ubc.z, icon: '🏙️' }] : []),
-    ...game.spots.filter((s) => !/Metro|Vidhana|Chinnaswamy|UB City/.test(s.name)).map((s) => ({ ...s, icon: '🛣️' })),
-    ...world.doors.filter((d) => /cafe|darshini|pub/.test(d.theme) && !/^(Sri Sai|Namma|Fourth|Swalpa|Malleshwaram|Peak|Dosa|Ctrl|Iyengar)/i.test(d.name)).slice(0, 12).map((d) => ({ name: d.name, x: d.x, z: d.z, icon: d.theme === 'pub' ? '🍺' : '☕' })),
+    ...world.stations.map((s) => ({ name: `${s.name} Metro`, x: s.ex, z: s.ez, icon: 'metro' })),
+    ...(world.vidhana ? [{ name: 'Vidhana Soudha', x: world.vidhana.fx, z: world.vidhana.fz, icon: 'landmark' }] : []),
+    ...(world.stadium ? [{ name: 'Chinnaswamy Stadium', x: world.stadium.x, z: world.stadium.z + world.stadium.r + 15, icon: 'cricket' }] : []),
+    ...(world.ubc ? [{ name: 'UB City', x: world.ubc.x, z: world.ubc.z, icon: 'city' }] : []),
+    ...game.spots.filter((s) => !/Metro|Vidhana|Chinnaswamy|UB City/.test(s.name)).map((s) => ({ ...s, icon: 'road' })),
+    ...world.doors.filter((d) => /cafe|darshini|pub/.test(d.theme) && !/^(Sri Sai|Namma|Fourth|Swalpa|Malleshwaram|Peak|Dosa|Ctrl|Iyengar)/i.test(d.name)).slice(0, 12).map((d) => ({ name: d.name, x: d.x, z: d.z, icon: d.theme === 'pub' ? 'beer' : 'coffee' })),
   ];
   // everything you can search for on the big map
   const searchIndex = (() => {
@@ -210,31 +217,68 @@ async function init() {
     for (const r of world.roads) {
       if (!r.n || seen.has(r.n) || !(r.drive || r.k === 'pedestrian')) continue;
       seen.add(r.n); const p = r.pts[Math.floor(r.pts.length / 2)];
-      out.push({ name: r.n, x: p[0], z: p[1], icon: '🛣️', kind: 'Road' });
+      out.push({ name: r.n, x: p[0], z: p[1], icon: 'road', kind: 'Road' });
     }
-    for (const d of world.doors) { if (seen.has(d.name)) continue; seen.add(d.name); out.push({ name: d.name, x: d.x, z: d.z, icon: d.theme === 'pub' ? '🍺' : d.theme === 'bakery' ? '🥐' : '🍽️', kind: d.road ? `on ${d.road}` : 'Food' }); }
-    for (const a of world.parks) if (a.n && !seen.has(a.n)) { seen.add(a.n); const [x, z] = a.pts[0]; out.push({ name: a.n, x, z, icon: '🌳', kind: 'Park' }); }
-    for (const b of world.buildings) if (b.name && !seen.has(b.name)) { seen.add(b.name); out.push({ name: b.name, x: b.cx, z: b.cz, icon: '🏢', kind: 'Building' }); }
+    for (const d of world.doors) { if (seen.has(d.name)) continue; seen.add(d.name); out.push({ name: d.name, x: d.x, z: d.z, icon: d.theme === 'pub' ? 'beer' : d.theme === 'bakery' ? 'bakery' : 'food', kind: d.road ? `on ${d.road}` : 'Food' }); }
+    for (const a of world.parks) if (a.n && !seen.has(a.n)) { seen.add(a.n); const [x, z] = a.pts[0]; out.push({ name: a.n, x, z, icon: 'tree', kind: 'Park' }); }
+    for (const b of world.buildings) if (b.name && !seen.has(b.name)) { seen.add(b.name); out.push({ name: b.name, x: b.cx, z: b.cz, icon: 'building', kind: 'Building' }); }
     return out;
   })();
   $('minimap').addEventListener('click', () => { if (state.started) openMap(); });
   function navTo(t) { const f = state.mode === 'drive' ? player.pos : W.pos; nav.setTarget(t, f, state.mode === 'drive' ? 'drive' : 'walk'); pinBeam.visible = t.name === 'Dropped pin'; if (pinBeam.visible) pinBeam.position.set(t.x, 0, t.z); }
-  function openMap() {
-    if (state.mode === 'interior' || state.mode === 'metro') return;
+  function openMap() { if (state.mode !== 'interior' && state.mode !== 'metro') overlays.open('map'); }
+  function showMap() {
     const f = state.mode === 'drive' ? player.pos : W.pos;
     ui.openMap({ focus: { x: f.x, z: f.z, heading: state.mode === 'drive' ? player.heading : W.yaw }, markers: game.markers(), route: nav.route, places, search: searchIndex,
-      onPick: (p) => { navTo(p); ui.toast('📍 Route set', `Follow the blue arrows to <b>${p.name}</b>.`); },
+      onPick: (p) => { navTo(p); ui.toast('Route set', `Follow the blue arrows to <b>${p.name}</b>.`, 'pin'); },
       onClear: () => { nav.clear(); pinBeam.visible = false; } });
   }
   ui.sync(state);
+
+  // ---------- overlays: pause → settings / map, café menus, photo mode ----------
+  const overlays = createOverlays(state);
+  ui.onClosed = (n) => overlays.close(n, true);
+  ui.onOpened = (n) => overlays.open(n);
+  const clockText = () => ui.fmtTime(state.hours).replace(/<[^>]+>/g, '');
+  overlays.register('pause', { show: () => ui.showPause(`${$('locName').textContent} · ${clockText()}`), hide: ui.hidePause, key: ui.pauseKey });
+  overlays.register('settings', { show: (t) => ui.showSettings(t), hide: ui.hideSettings, key: ui.settingsKey });
+  overlays.register('map', { show: showMap, hide: ui.closeMap, key: (e) => input.is(e.code, 'map') && (overlays.close('map'), true) });
+  overlays.register('menu', { hide: ui.closeMenu, key: ui.menuKey });
+  overlays.register('photo', { show: enterPhoto, hide: exitPhoto, key: (e) => input.is(e.code, 'photo') && (overlays.close('photo'), true) });
+  function pauseAction(a) {
+    if (a === 'open') overlays.open('pause');
+    else if (a === 'resume') overlays.close('pause');
+    else if (a === 'map') { overlays.close('pause'); openMap(); }
+    else if (a === 'settings') overlays.open('settings', 'graphics');
+    else if (a === 'controls') overlays.open('settings', 'controls');
+    else if (a === 'save') $('pauseSub').textContent = saveGame() ? `Saved at ${clockText()}. Continue from the title screen next time.` : 'Could not save: browser storage is blocked.';
+    else if (a === 'quit') quitToTitle();
+  }
+
+  // ---------- save / load: one slot in this browser ----------
+  function saveGame() {
+    const p = player.pos;
+    try { localStorage.setItem('blr.save', JSON.stringify({ v: 1, hours: state.hours, day: state.day, weather: state.weather, vehicle: player.type, pos: [p.x, p.z, player.heading], wallet: { ...game.wallet }, found: game.found })); return true; } catch (e) { return false; }
+  }
+  function loadGame() {
+    let s = null; try { s = JSON.parse(localStorage.getItem('blr.save') || 'null'); } catch (e) { /* storage blocked */ }
+    if (!s || s.v !== 1) return false;
+    Object.assign(game.wallet, s.wallet); state.hours = s.hours; state.day = s.day; state.weather = s.weather; weather.set(s.weather);
+    state.vehicle = s.vehicle; player.setType(s.vehicle); player.pos.set(s.pos[0], 0, s.pos[1]); player.heading = s.pos[2]; player.park(); game.restore(s.found);
+    ui.sync(state); return true;
+  }
+  function quitToTitle() {
+    overlays.clear(); state.started = false; document.body.classList.remove('playing');
+    $('start').classList.remove('gone'); $('startBtn').innerHTML = `${icon('play')} Resume`; $('newBtn').classList.remove('on');
+  }
 
   let liveTimer = null;
   async function refreshLive() {
     try {
       const kind = await weather.fetchLive();
       state.weather = kind; weather.set(kind); ui.sync(state);
-      ui.toast('📡 Live Bengaluru', `It's ${weather.state.temp}°C and ${kind} in Bengaluru right now.`);
-    } catch (e) { ui.toast('📡 Live weather unavailable', 'Using real IST time only.'); }
+      ui.toast('Live Bengaluru', `It's ${weather.state.temp}°C and ${kind} in Bengaluru right now.`, 'live');
+    } catch (e) { ui.toast('Live weather unavailable', 'Using real IST time only.', 'live'); }
   }
   function setLive(on) {
     state.live = on; clearInterval(liveTimer);
@@ -312,31 +356,30 @@ async function init() {
     }
     if (quality.mode !== 'auto') return;
     const i = TIER_ORDER.indexOf(quality.tier);
-    if (fps < 42 && i > 0) { autoQ.ceiling = quality.tier; autoQ.good = 0; quality.dyn = 1; applyTier(TIER_ORDER[i - 1]); ui.toast('⚙️ Auto graphics', `Dropped to ${tierCfg().label} (${Math.round(fps)} fps)`); }
+    if (fps < 42 && i > 0) { autoQ.ceiling = quality.tier; autoQ.good = 0; quality.dyn = 1; applyTier(TIER_ORDER[i - 1]); ui.toast('Auto graphics', `Dropped to ${tierCfg().label} (${Math.round(fps)} fps)`, 'gear'); }
     else if (fps > 58 && i >= 0 && i < 2 && TIER_ORDER[i + 1] !== autoQ.ceiling) { if (++autoQ.good >= 3) { autoQ.good = 0; applyTier(TIER_ORDER[i + 1]); } }
     else autoQ.good = 0;
   }
   addEventListener('resize', onResize);
 
   // ---------- input ----------
-  const keys = new Set();
-  const input = { throttle: 0, steer: 0, handbrake: false };
-  const touch = { l: false, r: false, g: false, b: false };
+  const ctl = { throttle: 0, steer: 0, handbrake: false, fwd: 0, side: 0, run: false };
+  const touch = { l: false, r: false, up: false, dn: false };
   const camCtl = { yaw: 0, walkYaw: 0, pitch: 0.2, dragging: false, idle: 0, zoom: 1 };
   function toggleVehicle() {
     if (state.mode === 'drive') {
-      if (Math.abs(player.speed) > 3) { ui.toast('Slow down first', 'Stop before you get out.'); return; }
+      if (Math.abs(player.speed) > 3) { ui.toast('Slow down first', 'Stop before you get out.', 'warning'); return; }
       player.park();
       const lx = Math.cos(player.heading), lz = -Math.sin(player.heading);
       const p = { x: player.pos.x + lx * (player.radius + 0.7), z: player.pos.z + lz * (player.radius + 0.7) };
       world.collide(p, 0.35);
       W.pos.set(p.x, 0, p.z); W.yaw = player.heading; W.speed = 0; camCtl.walkYaw = player.heading;
       walker.root.visible = true; state.mode = 'walk'; player.setOccupied(false);
-      ui.toast('🚶 On foot', 'Walk into cafés, buy from carts, take the metro. <b>F</b> near your vehicle to drive, <b>G</b> to call it.');
+      ui.toast('On foot', `Walk into cafés, buy from carts, take the metro. ${K('vehicle')} near your vehicle to drive, ${K('call')} to call it.`, 'walk');
     } else if (state.mode === 'walk') {
-      if (W.y > 1 || W.pos.distanceTo(player.pos) > player.radius + 2.6) { ui.toast('Too far from your vehicle', 'Press <b>G</b> to call it to the nearest road.'); return; }
-      if (tow.busy) { ui.toast('🚛 Too late', 'It is already on the tow truck.'); return; }
-      if (tow.impounded) { tow.release(); ui.toast('🧾 Released from the tow yard', 'Fine already paid. Park properly next time, saar.'); }
+      if (W.y > 1 || W.pos.distanceTo(player.pos) > player.radius + 2.6) { ui.toast('Too far from your vehicle', `Press ${K('call')} to call it to the nearest road.`, 'phone'); return; }
+      if (tow.busy) { ui.toast('Too late', 'It is already on the tow truck.', 'truck'); return; }
+      if (tow.impounded) { tow.release(); ui.toast('Released from the tow yard', 'Fine already paid. Park properly next time, saar.', 'receipt'); }
       walker.root.visible = false; state.mode = 'drive'; camCtl.yaw = 0; player.setOccupied(true);
     }
   }
@@ -345,84 +388,101 @@ async function init() {
       // roadside mechanic: a fade, a bill, a working vehicle
       ui.fade(() => {
         const cost = Math.min(150, game.wallet.money); game.wallet.money -= cost; player.repair(); state.hours = (state.hours + 0.25) % 24;
-        ui.toast('🔧 Mechanic anna fixed it', cost >= 150 ? '₹150. "Next time drive slow, saar."' : `₹${cost}. "Pay the rest next time, anna."`);
+        ui.toast('Mechanic anna fixed it', cost >= 150 ? '₹150. "Next time drive slow, saar."' : `₹${cost}. "Pay the rest next time, anna."`, 'wrench');
       }, 'Mechanic anna is fixing it…');
       return;
     }
     if (state.mode !== 'walk' || tow.busy) return;
     if (tow.impounded) {
-      if (game.wallet.money < 500) { ui.toast('💸 Need ₹500', 'Delivery from the tow yard costs ₹500. Or walk there and collect it.'); return; }
-      game.wallet.money -= 500; tow.release(); ui.toast('🚛 Delivered from the tow yard', '₹500 paid.');
+      if (game.wallet.money < 500) { ui.toast('Need ₹500', 'Delivery from the tow yard costs ₹500. Or walk there and collect it.', 'cash'); return; }
+      game.wallet.money -= 500; tow.release(); ui.toast('Delivered from the tow yard', '₹500 paid.', 'truck');
     }
     const nr = world.nearestRoad(W.pos.x, W.pos.z, 80);
-    if (!nr) { ui.toast('No road nearby', 'Walk closer to a street.'); return; }
+    if (!nr) { ui.toast('No road nearby', 'Walk closer to a street.', 'road'); return; }
     const side = ((W.pos.x - nr.x) * nr.dz - (W.pos.z - nr.z) * nr.dx) >= 0 ? 1 : -1, o = nr.r.hw - 1.4;
     player.pos.set(nr.x + nr.dz * o * side, 0, nr.z - nr.dx * o * side); player.heading = Math.atan2(nr.dx * side, nr.dz * side); player.park();
-    ui.toast(`📱 ${VEHICLE_STATS[player.type].label} called`, 'It is waiting by the road. Walk over and press <b>F</b>.');
+    ui.toast(`${VEHICLE_STATS[player.type].label} called`, `It is waiting by the road. Walk over and press ${K('vehicle')}.`, 'phone');
   }
+  // every key goes through the overlay stack first (pause, settings, map, menu, photo); only gameplay keys reach the keymap
   addEventListener('keydown', (e) => {
-    if (e.code === 'Tab') { e.preventDefault(); ui.togglePanel(); return; }
-    if (ui.menuOpen) { ui.menuKey(e.code); e.preventDefault(); return; }
-    if (ui.mapOpen) { if (e.code === 'Escape' || e.code === 'KeyM') ui.closeMap(); return; }
-    if (state.mode === 'metro') { if (e.code === 'Escape') ride.skip(); if (e.code === 'KeyC') ride.toggleView(); return; }
-    if (e.repeat) return;
-    keys.add(e.code);
+    if (overlays.key(e)) return;
+    if (e.code === 'Tab') { e.preventDefault(); return; } // free: reserved for the in-game phone
     if (!state.started) return;
-    if (state.photo) { if (e.code === 'KeyP' || e.code === 'Escape') exitPhoto(); return; }
-    switch (e.code) {
-      case 'KeyH': if (state.mode === 'drive') audio.horn(player.type); break;
-      case 'KeyC': actions.setCamera(['chase', 'first', 'cine'][(['chase', 'first', 'cine'].indexOf(state.camera) + 1) % 3]); break;
-      case 'KeyV': actions.setVehicle(['auto', 'scooter', 'car'][(['auto', 'scooter', 'car'].indexOf(state.vehicle) + 1) % 3]); break;
-      case 'KeyE': game.interact(ctx()); break;
-      case 'KeyF': if (state.mode !== 'interior') toggleVehicle(); break;
-      case 'KeyG': summon(); break;
-      case 'KeyP': if (state.mode !== 'interior') enterPhoto(); break;
-      case 'KeyT': actions.setTimeSpeed([0, 1, 60, 360][([0, 1, 60, 360].indexOf(state.timeSpeed) + 1) % 4]); ui.toast('⏱️ Time', state.timeSpeed ? `${state.timeSpeed}× speed` : 'Paused'); break;
-      case 'KeyR': actions.setWeather(WEATHER_ORDER[(WEATHER_ORDER.indexOf(state.weather) + 1) % 4]); break;
-      case 'KeyL': actions.toggleLive(); break;
-      case 'KeyM': openMap(); break;
-      case 'KeyU': ui.toast(audio.toggleMute() ? '🔇 Muted' : '🔊 Sound on'); break;
-      case 'KeyI': ui.toggleHelp(); break;
-      case 'KeyX': ui.dismissAll(); break;
-      case 'KeyK': if (state.mode === 'drive') life.radioNext(); break;
-      case 'KeyY': game.acceptOffer(); break;
-      case 'KeyN': game.declineOffer(); break;
-      case 'F3': e.preventDefault(); actions.toggleStats(); break;
-    }
+    if (/^F\d+$/.test(e.code) && input.actionsFor(e.code).length) e.preventDefault();
+    if (state.mode === 'metro') { if (!e.repeat && input.is(e.code, 'camera')) ride.toggleView(); else if (!e.repeat && input.is(e.code, 'interact')) ride.skip(); return; }
+    input.keydown(e);
   });
-  addEventListener('keyup', (e) => keys.delete(e.code));
-  addEventListener('blur', () => keys.clear());
+  // one-shot actions, read once per frame (keyboard and gamepad alike)
+  const cycle = (list, v) => list[(list.indexOf(v) + 1) % list.length];
+  const ONE = {
+    horn: () => state.mode === 'drive' && audio.horn(player.type),
+    camera: () => actions.setCamera(cycle(['chase', 'first', 'cine'], state.camera)),
+    switchVehicle: () => actions.setVehicle(cycle(['auto', 'scooter', 'car'], state.vehicle)),
+    interact: () => game.interact(ctx()),
+    vehicle: () => state.mode !== 'interior' && toggleVehicle(),
+    call: () => summon(),
+    photo: () => state.mode !== 'interior' && overlays.open('photo'),
+    timeSpeed: () => { actions.setTimeSpeed(cycle([0, 1, 60, 360], state.timeSpeed)); ui.toast('Time', state.timeSpeed ? `${state.timeSpeed}× speed` : 'Paused', 'timer'); },
+    weather: () => actions.setWeather(cycle(WEATHER_ORDER, state.weather)),
+    live: () => actions.toggleLive(),
+    map: () => openMap(),
+    mute: () => { const m = audio.toggleMute(); ui.toast(m ? 'Muted' : 'Sound on', '', m ? 'mute' : 'sound'); },
+    controls: () => overlays.open('settings', 'controls'),
+    dismiss: () => ui.dismissAll(),
+    radio: () => state.mode === 'drive' && life.radioNext(),
+    accept: () => game.acceptOffer(),
+    decline: () => game.declineOffer(),
+    stats: () => actions.toggleStats(),
+  };
+  function handlePresses() {
+    if (state.started && !state.paused && !overlays.top() && state.mode !== 'metro') for (const a in ONE) if (input.pressed(a)) ONE[a]();
+    input.flush();
+  }
+  // gamepad: Start pauses, B backs out of a layer, A clicks the focused button, the d-pad walks menus
+  const esc = { code: 'Escape', preventDefault() {} };
+  function padButton(i) {
+    if (i === 9) { if (state.started) overlays.key(esc); return true; }
+    if (!overlays.top()) return false;
+    if (i === 1) overlays.key(esc);
+    else if (i === 0) document.activeElement && document.activeElement.click && document.activeElement.click();
+    else if (i === 12 || i === 13) overlays.key({ code: i === 12 ? 'ArrowUp' : 'ArrowDown', preventDefault() {} });
+    return true;
+  }
   const cv = renderer.domElement;
   cv.addEventListener('pointerdown', (e) => { if (!state.photo && e.pointerType === 'mouse') { camCtl.dragging = true; cv.setPointerCapture(e.pointerId); } });
   cv.addEventListener('pointerup', () => { camCtl.dragging = false; });
   cv.addEventListener('pointermove', (e) => {
-    if (!camCtl.dragging) return;
+    if (!camCtl.dragging || state.paused) return;
     if (state.mode === 'drive') camCtl.yaw -= e.movementX * 0.006; else camCtl.walkYaw -= e.movementX * 0.006;
     camCtl.pitch = clamp(camCtl.pitch + e.movementY * 0.004, -0.5, 1.25); camCtl.idle = 0;
   });
   cv.addEventListener('wheel', (e) => { camCtl.zoom = clamp(camCtl.zoom + Math.sign(e.deltaY) * 0.12, 0.5, 3.2); }, { passive: true });
   if (isTouch) {
-    $('touch').classList.add('on');
+    document.body.classList.add('touch');
+    const TAP = { h: () => ONE.horn(), e: () => (state.mode === 'metro' ? ride.skip() : ONE.interact()), f: () => ONE.vehicle(), call: () => summon(), map: () => openMap(), pause: () => overlays.open('pause') };
     for (const b of document.querySelectorAll('#touch [data-k]')) {
-      const k = b.dataset.k;
-      const set = (v) => (e) => { e.preventDefault(); if (k in touch) touch[k] = v; else if (v) { if (k === 'h') audio.horn(player.type); if (k === 'e') game.interact(ctx()); if (k === 'v') $('gear').click(); if (k === 'f') toggleVehicle(); } };
+      const k = b.dataset.k; b.innerHTML = icon(b.dataset.i);
+      const set = (v) => (e) => { e.preventDefault(); if (k in touch) touch[k] = v; else if (v && state.started) TAP[k](); };
       b.addEventListener('pointerdown', set(true)); b.addEventListener('pointerup', set(false)); b.addEventListener('pointerleave', set(false));
     }
   }
-  const active = () => state.started && !state.photo && !ui.menuOpen;
+  const active = () => state.started && !state.photo && !state.paused && !overlays.top();
   function readInput() {
-    const up = keys.has('KeyW') || keys.has('ArrowUp') || touch.g, down = keys.has('KeyS') || keys.has('ArrowDown') || touch.b;
-    const left = keys.has('KeyA') || keys.has('ArrowLeft') || touch.l, right = keys.has('KeyD') || keys.has('ArrowRight') || touch.r;
+    const p = input.pad;
+    const kf = (input.down('forward') || touch.up ? 1 : 0) - (input.down('back') || touch.dn ? 1 : 0);
+    const ks = (input.down('right') || touch.r ? 1 : 0) - (input.down('left') || touch.l ? 1 : 0);
     const on = active() && state.mode === 'drive';
-    input.throttle = on ? (up ? 1 : 0) - (down ? 1 : 0) : 0;
-    input.steer = on ? (right ? 1 : 0) - (left ? 1 : 0) : 0;
-    input.handbrake = on && keys.has('Space');
-    input.fwd = (up ? 1 : 0) - (down ? 1 : 0); input.side = (right ? 1 : 0) - (left ? 1 : 0);
-    input.run = keys.has('ShiftLeft') || keys.has('ShiftRight');
+    // driving: left stick steers, right trigger throttle, left trigger brake; on foot the stick walks
+    ctl.throttle = on ? clamp(kf + p.rt - p.lt, -1, 1) : 0;
+    ctl.steer = on ? clamp(ks + p.x, -1, 1) : 0;
+    ctl.handbrake = on && input.down('jump');
+    ctl.fwd = clamp(kf - p.y, -1, 1); ctl.side = clamp(ks + p.x, -1, 1);
+    ctl.run = input.down('run');
+    if (active() && (p.rx || p.ry)) { if (state.mode === 'drive') camCtl.yaw -= p.rx * 0.05; else camCtl.walkYaw -= p.rx * 0.05; camCtl.pitch = clamp(camCtl.pitch + p.ry * 0.03, -0.5, 1.25); camCtl.idle = 0; }
   }
-  const ctx = () => ({ rush: (state.hours >= 8.5 && state.hours < 11) || (state.hours >= 17.5 && state.hours < 21), raining: weather.state.rain > 0.3, mode: state.mode, player, walker: W, interior, place: W.place, menu: W.place && interior.menu, running: state.mode !== 'drive' && input.run && W.speed > 3, extraPrompt: extraPrompt() });
+  const ctx = () => ({ rush: (state.hours >= 8.5 && state.hours < 11) || (state.hours >= 17.5 && state.hours < 21), raining: weather.state.rain > 0.3, mode: state.mode, player, walker: W, interior, place: W.place, menu: W.place && interior.menu, running: state.mode !== 'drive' && ctl.run && W.speed > 3, extraPrompt: extraPrompt() });
   function extraPrompt() {
-    if (state.mode === 'walk' && W.pos.distanceTo(player.pos) < player.radius + 2.6) return `Press <kbd>F</kbd> to get in your ${VEHICLE_STATS[player.type].label.toLowerCase()}`;
+    if (state.mode === 'walk' && W.pos.distanceTo(player.pos) < player.radius + 2.6) return `Press ${K('vehicle')} to get in your ${VEHICLE_STATS[player.type].label.toLowerCase()}`;
     return null;
   }
 
@@ -446,16 +506,16 @@ async function init() {
       if (v > 6 && tag !== 'tree' && tag !== 'cow') fx.burst('sparks', sx, 0.6, sz, Math.min(24, k * 3));
       if (tag === 'tree') fx.burst('leaves', p.x, 3.5, p.z, 20, { spread: 4, up: 1 });
       player.damage(dmg);
-      if (player.broken && once('broke', 5)) ui.toast('💥 Your vehicle broke down', 'Press <b>G</b> to call a roadside mechanic (₹150).');
-      else if (player.health < 35 && once('lowhp', 25)) ui.toast('⚠️ Badly damaged', `Health ${Math.round(player.health)}%. Steering is pulling, engine is smoking.`);
-      if (tag === 'cow') { audio.moo(); if (once('cow', 8)) ui.toast('🐄 The cow does not care.', 'Cows have right of way in Bengaluru. Always.'); }
+      if (player.broken && once('broke', 5)) ui.toast('Your vehicle broke down', `Press ${K('call')} to call a roadside mechanic (₹150).`, 'crash');
+      else if (player.health < 35 && once('lowhp', 25)) ui.toast('Badly damaged', `Health ${Math.round(player.health)}%. Steering is pulling, engine is smoking.`, 'warning');
+      if (tag === 'cow') { audio.moo(); if (once('cow', 8)) ui.toast('The cow does not care.', 'Cows have right of way in Bengaluru. Always.', 'cow'); }
       else if (tag === 'vehicle' && hit && hit.v) {
         hit.v.dazed = 4; hit.v.speed = 0;
         const LINES = ['"Oye! Kannu kaanalva?"', '"Saar! New car, saar! Insurance ide na?"', '"Yen guru, driving school yelli kalitidiya?"', '"Ayyo! My mirror!"'];
-        if (once('veh', 4)) ui.toast(`😠 ${LINES[Math.floor(Math.random() * LINES.length)]}`, `The ${hit.v.type === 'bus' ? 'BMTC driver' : 'other driver'} is not happy. −${Math.round(dmg)}% vehicle health`);
+        if (once('veh', 4)) ui.toast(`${LINES[Math.floor(Math.random() * LINES.length)]}`, `The ${hit.v.type === 'bus' ? 'BMTC driver' : 'other driver'} is not happy. −${Math.round(dmg)}% vehicle health`, 'chat');
         game.wallet.respect = Math.max(0, game.wallet.respect - Math.min(6, k));
-      } else if (tag === 'parked' && once('alarm', 6)) { audio.alarm && audio.alarm(); ui.toast('🚨 Car alarm!', 'Owner from the balcony: "YAARU ADU?!"'); }
-      else if (tag === 'pole' && once('pole', 10)) ui.toast('💡 You hit a lamp post', 'The cables above are swinging. BESCOM will hear about this.');
+      } else if (tag === 'parked' && once('alarm', 6)) { audio.alarm && audio.alarm(); ui.toast('Car alarm!', 'Owner from the balcony: "YAARU ADU?!"', 'siren'); }
+      else if (tag === 'pole' && once('pole', 10)) ui.toast('You hit a lamp post', 'The cables above are swinging. BESCOM will hear about this.', 'bulb');
     },
     // hitting a person: they go down, the street turns on you, and it costs respect (and money if police are near)
     hitPed(p, speed) {
@@ -464,16 +524,16 @@ async function init() {
       const loss = Math.round(10 + Math.min(15, speed));
       game.wallet.respect = Math.max(0, game.wallet.respect - loss);
       const cop = signals.list.some((s) => s.cop && Math.hypot(s.x - p.x, s.z - p.z) < 160);
-      if (cop) { game.wallet.money = Math.max(0, game.wallet.money - 500); ui.toast('👮 Police: ₹500 fine', '"You hit a pedestrian! Licence-u kodi. Next time it\'s the station."'); }
+      if (cop) { game.wallet.money = Math.max(0, game.wallet.money - 500); ui.toast('Police: ₹500 fine', '"You hit a pedestrian! Licence-u kodi. Next time it\'s the station."', 'police'); }
       const SHOUT = ['"Yenu madtha idiya?! Kannu ilva?!"', '"Somebody call the police!"', '"Hey! Stop the auto! STOP!"', '"Ayyo! Are you okay, saar?"'];
-      ui.toast('🚑 You knocked someone down', `${SHOUT[Math.floor(Math.random() * SHOUT.length)]} Respect −${loss}`);
+      ui.toast('You knocked someone down', `${SHOUT[Math.floor(Math.random() * SHOUT.length)]} Respect −${loss}`, 'medic');
       if (game.ride.state === 'riding') { game.cancel(); ui.dialogue(`${game.ride.kind === 'scooter' ? 'Customer (on the phone)' : 'Passenger'}: "That's it, I'm reporting you. Stop here!"`); }
       audio.cheer && audio.cheer();
     },
     tumble(p, vx, vz) { if (phys) phys.tumble(p, vx, vz); },
-    pothole(v) { shake = 0.5; audio.bump(Math.min(1, v / 10)); game.onPothole(); if (once('pot', 20)) ui.toast('🕳️ Pothole!', 'Welcome to Bengaluru roads. Your spine says hi.'); },
-    pedestrian() { if (once('ped', 6)) ui.toast('🚶 "Oi! Nodkond hogi!"', 'Watch where you\'re going.'); },
-    honked() { if (once('honk', 7)) ui.toast('📢 Honk honk!', '"Move aagi, anna! Signal green aagide!"'); },
+    pothole(v) { shake = 0.5; audio.bump(Math.min(1, v / 10)); game.onPothole(); if (once('pot', 20)) ui.toast('Pothole!', 'Welcome to Bengaluru roads. Your spine says hi.', 'pothole'); },
+    pedestrian() { if (once('ped', 6)) ui.toast('"Oi! Nodkond hogi!"', 'Watch where you\'re going.', 'walk'); },
+    honked() { if (once('honk', 7)) ui.toast('Honk honk!', '"Move aagi, anna! Signal green aagide!"', 'horn'); },
   };
   // Rapier loads in the background (a 2 MB WebAssembly module); until then the simple collisions are used
   let phys = null;
@@ -484,13 +544,14 @@ async function init() {
   // ---------- photo mode ----------
   let orbit = null;
   function enterPhoto() {
+    $('photoHint').innerHTML = `Drag to orbit · scroll to zoom · ${K('photo')} or <kbd>Esc</kbd> to exit`;
     state.photo = true; document.body.classList.add('photo');
     const f = state.mode === 'drive' ? player.pos : W.pos;
     orbit = new OrbitControls(camera, cv); orbit.target.set(f.x, 1.2, f.z); orbit.enableDamping = true; orbit.maxPolarAngle = Math.PI * 0.49; orbit.maxDistance = 80;
     $('pcLoc').textContent = `${world.zoneAt(f.x, f.z).name} · ${ui.fmtTime(state.hours).replace(/<[^>]+>/g, '')}`;
   }
   function exitPhoto() { state.photo = false; document.body.classList.remove('photo'); orbit && orbit.dispose(); orbit = null; }
-  $('exitPhoto').onclick = exitPhoto;
+  $('exitPhoto').onclick = () => overlays.close('photo');
   $('savePhoto').onclick = () => {
     composer.render();
     const src = renderer.domElement, Wd = 1600, H = Math.round(1600 * src.height / src.width);
@@ -505,11 +566,20 @@ async function init() {
 
   // ---------- start ----------
   $('loading').remove();
-  $('startBtn').disabled = false; $('startBtn').textContent = 'Start roaming →';
-  $('startBtn').onclick = () => {
+  // the key list here comes from the keymap, so it always matches your bindings
+  const startKeys = () => { $('startKeys').innerHTML = [[['forward', 'left', 'back', 'right'], 'drive / walk'], [['vehicle'], 'get out / get in'], [['horn'], 'horn (mandatory)'], [['interact'], 'interact'], [['switchVehicle'], 'auto / scooter / car'], [['map'], 'map'], [['photo'], 'postcard photo'], [['controls'], 'all controls']].map(([as, l]) => `<div>${as.map(K).join('')} ${l}</div>`).join('') + '<div><kbd>Esc</kbd> pause · settings</div>'; };
+  startKeys(); ui.onKeysChanged = startKeys;
+  const hasSave = (() => { try { return !!localStorage.getItem('blr.save'); } catch (e) { return false; } })();
+  let begun = false;
+  function begin(load) {
     audio.start(); state.started = true; $('start').classList.add('gone'); document.body.classList.add('playing');
-    setTimeout(() => ui.toast('🛺 Namaskara!', 'You\'re an auto driver on MG Road. <b>F</b> to get out and walk. <b>I</b> for controls.'), 600);
-  };
+    if (begun) return; begun = true;
+    if (load && loadGame()) setTimeout(() => ui.toast('Welcome back', 'Your saved game is loaded.', 'save'), 600);
+    else setTimeout(() => ui.toast('Namaskara!', `You're an auto driver on MG Road. ${K('vehicle')} to get out and walk, ${K('controls')} for controls, <kbd>Esc</kbd> to pause.`, 'auto'), 600);
+  }
+  $('startBtn').disabled = false; $('startBtn').innerHTML = hasSave ? `${icon('play')} Continue` : 'Start roaming';
+  $('startBtn').onclick = () => begin(hasSave);
+  if (hasSave) { $('newBtn').classList.add('on'); $('newBtn').onclick = () => begin(false); }
 
   // ---------- loop ----------
   const clock = new THREE.Clock();
@@ -559,13 +629,14 @@ async function init() {
       else chaseCam(dt, player.pos.x, player.pos.z, player.heading + camCtl.yaw, (player.type === 'car' ? 7.5 : player.type === 'scooter' ? 5.2 : 6.2) * camCtl.zoom, 2.2, 1.4);
       camera.fov = damp(camera.fov, 58 + Math.min(14, Math.abs(player.speed) * 0.5), 3, dt);
     } else {
-      if (!camCtl.dragging && camCtl.idle > 1.2 && W.speed > 1 && input.fwd > 0) camCtl.walkYaw = angleLerp(camCtl.walkYaw, W.yaw, 1 - Math.exp(-1.5 * dt));
+      if (!camCtl.dragging && camCtl.idle > 1.2 && W.speed > 1 && ctl.fwd > 0) camCtl.walkYaw = angleLerp(camCtl.walkYaw, W.yaw, 1 - Math.exp(-1.5 * dt));
       const inside = state.mode === 'interior';
       if (state.camera === 'first') firstCam(W.pos.x, W.pos.z, 1.62 + W.y, camCtl.walkYaw);
       else chaseCam(dt, W.pos.x, W.pos.z, camCtl.walkYaw, (inside ? 2.6 : 3.8) * Math.min(camCtl.zoom, inside ? 1.2 : 3.2), 1.7 + W.y, 1.45 + W.y, inside ? (v) => interior.clampCam(v) : null);
       camera.fov = damp(camera.fov, 60, 3, dt);
     }
-    if (shake > 0) { camera.position.add(tmp.set((Math.random() - 0.5) * shake * 0.4, (Math.random() - 0.5) * shake * 0.3, (Math.random() - 0.5) * shake * 0.4)); shake = Math.max(0, shake - dt * 2.5); }
+    if (ui.prefs.reduce) shake = 0;
+    if (shake > 0 && dt > 0) { camera.position.add(tmp.set((Math.random() - 0.5) * shake * 0.4, (Math.random() - 0.5) * shake * 0.3, (Math.random() - 0.5) * shake * 0.4)); shake = Math.max(0, shake - dt * 2.5); }
     camera.updateProjectionMatrix();
   }
 
@@ -573,10 +644,10 @@ async function init() {
     const cy = camCtl.walkYaw;
     const fx = Math.sin(cy), fz = Math.cos(cy), rx = -Math.cos(cy), rz = Math.sin(cy);
     const on = active();
-    let mx = on ? fx * input.fwd + rx * input.side : 0, mz = on ? fz * input.fwd + rz * input.side : 0;
+    let mx = on ? fx * ctl.fwd + rx * ctl.side : 0, mz = on ? fz * ctl.fwd + rz * ctl.side : 0;
     const l = Math.hypot(mx, mz);
     const tired = game.wallet.energy < 15 ? 0.7 : 1;
-    const target = l > 0 ? (input.run && game.wallet.energy > 5 ? 4.6 : 1.9) * tired : 0;
+    const target = l > 0 ? (ctl.run && game.wallet.energy > 5 ? 4.6 : 1.9) * tired : 0;
     W.speed = damp(W.speed, target, 8, dt);
     if (l > 0) { mx /= l; mz /= l; W.dir = [mx, mz]; W.yaw = angleLerp(W.yaw, Math.atan2(mx, mz), 1 - Math.exp(-12 * dt)); }
     const outside = state.mode !== 'interior';
@@ -591,12 +662,12 @@ async function init() {
     // ---- on a ladder: W/S climb, Space jumps off, the top hands you onto the roof
     if (W.ladder) {
       const L = W.ladder;
-      W.y += (input.fwd || 0) * 2.4 * dt;
+      W.y += (ctl.fwd || 0) * 2.4 * dt;
       W.yaw = Math.atan2(-L.nx, -L.nz);
       if (W.y >= L.y1 - 0.05) { W.ladder = null; W.mantle = { t: 0, x0: W.pos.x, z0: W.pos.z, x1: L.x - L.nx * 1.4, z1: L.z - L.nz * 1.4, y0: W.y, y1: L.y1 }; }
-      else if (W.y <= L.y0) { W.y = L.y0; if ((input.fwd || 0) < 0) W.ladder = null; }
-      if (keys.has('Space')) { W.ladder = null; W.vy = 3; W.pos.x += L.nx * 0.6; W.pos.z += L.nz * 0.6; }
-      walker.root.position.set(W.pos.x, W.y, W.pos.z); walker.root.rotation.y = W.yaw; walker.animate(dt, Math.abs(input.fwd || 0) * 1.5);
+      else if (W.y <= L.y0) { W.y = L.y0; if ((ctl.fwd || 0) < 0) W.ladder = null; }
+      if (input.down('jump')) { W.ladder = null; W.vy = 3; W.pos.x += L.nx * 0.6; W.pos.z += L.nz * 0.6; }
+      walker.root.position.set(W.pos.x, W.y, W.pos.z); walker.root.rotation.y = W.yaw; walker.animate(dt, Math.abs(ctl.fwd || 0) * 1.5);
       return;
     }
     const p = { x: W.pos.x + W.dir[0] * W.speed * dt, z: W.pos.z + W.dir[1] * W.speed * dt };
@@ -611,27 +682,27 @@ async function init() {
     W.pos.set(p.x, 0, p.z);
     if (outside) {
       // jump, gravity, landing
-      if (active() && W.ground && keys.has('Space') && !W.jumpHeld) { W.vy = 6.4; W.ground = false; }
-      W.jumpHeld = keys.has('Space');
+      if (active() && W.ground && input.down('jump') && !W.jumpHeld) { W.vy = 6.4; W.ground = false; }
+      W.jumpHeld = input.down('jump');
       W.vy -= 20 * dt; W.y += W.vy * dt;
       const g = world.groundAt(W.pos.x, W.pos.z, W.y);
       if (W.y <= g) {
-        if (W.vy < -13) { game.wallet.energy = Math.max(0, game.wallet.energy - 8); if (once('ouch', 4)) ui.toast('🤕 Ouch!', 'That was a long drop. Your knees disagree.'); shake = 0.6; }
+        if (W.vy < -13) { game.wallet.energy = Math.max(0, game.wallet.energy - 8); if (once('ouch', 4)) ui.toast('Ouch!', 'That was a long drop. Your knees disagree.', 'bandage'); shake = 0.6; }
         W.y = g; W.vy = 0; W.ground = true;
       } else if (W.y > g + 0.05) W.ground = false;
       // grab a ledge in reach while pushing into it
       const top = hit && hit.item && !['tree', 'pole', 'pillar', 'edge'].includes(hit.tag) ? hit.item.h : null;
-      if (top !== null && (input.fwd || 0) > 0 && top - W.y > 0.5 && top - W.y < (W.ground ? 1.35 : 2.4)) {
+      if (top !== null && (ctl.fwd || 0) > 0 && top - W.y > 0.5 && top - W.y < (W.ground ? 1.35 : 2.4)) {
         const tx = W.pos.x + W.dir[0] * 0.9, tz = W.pos.z + W.dir[1] * 0.9;
         if (world.inside(hit.item, tx, tz)) W.mantle = { t: 0, x0: W.pos.x, z0: W.pos.z, x1: tx, z1: tz, y0: W.y, y1: top };
       }
       // grab a ladder you're facing
-      if ((input.fwd || 0) > 0) for (const L of world.ladders) {
+      if ((ctl.fwd || 0) > 0) for (const L of world.ladders) {
         if (Math.abs(L.x - W.pos.x) > 1 || Math.abs(L.z - W.pos.z) > 1 || W.y < L.y0 - 0.3 || W.y > L.y1 - 0.3) continue;
         if (Math.hypot(L.x - W.pos.x, L.z - W.pos.z) < 0.85 && W.dir[0] * -L.nx + W.dir[1] * -L.nz > 0.5) { W.ladder = L; W.vy = 0; W.pos.x = L.x; W.pos.z = L.z; break; }
       }
       if (world.vidhanaTop && !W.peak && W.y > world.vidhanaTop.y - 1 && Math.hypot(W.pos.x - world.vidhanaTop.x, W.pos.z - world.vidhanaTop.z) < 8) {
-        W.peak = true; ui.card('🏛️', 'Top of Vidhana Soudha', 'You climbed the dome. All of Cubbon Park below you. (Security is on its way.)', 'Peak Bengaluru moment');
+        W.peak = true; ui.card('landmark', 'Top of Vidhana Soudha', 'You climbed the dome. All of Cubbon Park below you. (Security is on its way.)', 'Peak Bengaluru moment');
       }
     } else { W.y = 0; W.vy = 0; W.ground = true; }
     walker.root.position.set(W.pos.x, W.y, W.pos.z); walker.root.rotation.y = W.yaw;
@@ -644,7 +715,7 @@ async function init() {
   function drawStats() {
     const i = renderer.info.render, P = prof, f = (k) => (P[k] || 0).toFixed(1);
     const cpu = Object.keys(P).filter((k) => k !== 'render').reduce((a, k) => a + P[k], 0);
-    $('perf').innerHTML = `<b>${tierCfg().label}</b>${quality.mode === 'auto' ? ' (auto)' : ''} · ${renderer.getPixelRatio().toFixed(2)}× res${quality.dyn < 1 ? ` (dynamic ${Math.round(quality.dyn * 100)}%)` : ''}<br>` +
+    $('perf').innerHTML = `<b>${ui.fps} fps</b> · <b>${tierCfg().label}</b>${quality.mode === 'auto' ? ' (auto)' : ''} · ${renderer.getPixelRatio().toFixed(2)}× res${quality.dyn < 1 ? ` (dynamic ${Math.round(quality.dyn * 100)}%)` : ''}<br>` +
       `${i.calls} draw calls · ${(i.triangles / 1e6).toFixed(2)}M tris<br>` +
       `CPU sim ${cpu.toFixed(1)} ms · traffic ${f('traffic')} · people ${f('people')} · ui ${f('ui')}<br>render submit ${f('render')} ms`;
   }
@@ -653,11 +724,13 @@ async function init() {
   const mark = (k) => { const n = performance.now(); prof[k] = (prof[k] || 0) * 0.92 + (n - pt) * 0.08; pt = n; };
   function tick(forceDt) {
     pt = performance.now();
-    const rawDt = clock.getDelta(), dt = forceDt ?? Math.min(rawDt, 0.05);
+    input.poll(padButton); handlePresses();
+    // paused: dt is 0, so the clock, traffic and everything else hold still while the frame keeps rendering
+    const rawDt = clock.getDelta(), dt = state.paused ? 0 : forceDt ?? Math.min(rawDt, 0.05);
     t += dt;
     readInput();
     const prevHours = state.hours;
-    if (state.live) state.hours = istHours();
+    if (state.paused) { /* frozen */ } else if (state.live) state.hours = istHours();
     else if (!state.photo) state.hours = (state.hours + dt * state.timeSpeed / 3600 + 24) % 24;
     const dh = ((state.hours - prevHours) + 24) % 24 < 12 ? ((state.hours - prevHours) + 24) % 24 : 0;
     if (prevHours > 23 && state.hours < 1) state.day = (state.day + 1) % 7;
@@ -694,8 +767,8 @@ async function init() {
     player.setNight(L, state.mode === 'drive'); traffic.setNight(L); metro.setNight(L);
     mark('world');
 
-    if (!state.photo) {
-      if (state.mode === 'drive') player.update(dt, input, world, npcCollide, ev, phys);
+    if (!state.photo && !state.paused) {
+      if (state.mode === 'drive') player.update(dt, ctl, world, npcCollide, ev, phys);
       else { player.syncMesh(); if (state.mode !== 'metro') updateWalker(dt); }
       if (phys) {
         // Rapier moves your vehicle, shoves what you hit, and streams colliders around you
@@ -726,7 +799,7 @@ async function init() {
       if (key !== jobKey) { if (jobKey && !key) nav.clear(); jobKey = key; if (key) navTo({ ...(r.state === 'waiting' ? r.from : r.to), keep: true }); }
       if (state.mode === 'drive' || state.mode === 'walk') {
         const info = nav.update(dt, f, state.mode === 'drive' ? 'drive' : 'walk');
-        if (info && info.arrived) { pinBeam.visible = false; if (info.name === 'Dropped pin') ui.toast('📍 You have arrived', 'That was your pin.'); }
+        if (info && info.arrived) { pinBeam.visible = false; if (info.name === 'Dropped pin') ui.toast('You have arrived', 'That was your pin.', 'pin'); }
         ui.nav(info && !info.arrived ? info : null);
       } else ui.nav(null);
     }
@@ -744,18 +817,18 @@ async function init() {
     player.waterDepth = wd;
     const spraying = wd > 0.05 && Math.abs(player.speed) > 3;
     flood.update(dt, ws.rain, spraying ? { x: player.pos.x, z: player.pos.z, vx: player.vel.x, vz: player.vel.y } : null);
-    if (wd > 0.1 && flood.firstFlood()) ui.card('🌊', 'Waterlogged!', 'One hour of rain and the junction is a lake. Your auto is now a boat.', 'Peak Bengaluru moment', true);
-    if (wd > 0.3 && player.type === 'auto' && once('stall', 30)) ui.toast('💦 Engine sputtering', 'Water is up to the floorboard. Go slow or you will stall.');
+    if (wd > 0.1 && flood.firstFlood()) ui.card('wave', 'Waterlogged!', 'One hour of rain and the junction is a lake. Your auto is now a boat.', 'Peak Bengaluru moment', true);
+    if (wd > 0.3 && player.type === 'auto' && once('stall', 30)) ui.toast('Engine sputtering', 'Water is up to the floorboard. Go slow or you will stall.', 'drop');
     edges.update(dt, camera.position, atm.hor, atm.night);
-    if (state.mode !== 'interior' && state.mode !== 'metro') life.update(dt, { hours: state.hours, day: state.day, focus: f, mode: state.mode, zone: $('locName').textContent, lights: L, camera, driving: state.mode === 'drive', speed: state.mode === 'drive' ? Math.abs(player.speed) : W.speed });
-    if (state.mode !== 'interior' && state.mode !== 'metro' && edges.near(f)) ui.toast('🚧 Road closed', 'Namma Metro Phase 3 work since 2017. Diversion ahead (there is no diversion).');
+    if (!state.paused && state.mode !== 'interior' && state.mode !== 'metro') life.update(dt, { hours: state.hours, day: state.day, focus: f, mode: state.mode, zone: $('locName').textContent, lights: L, camera, driving: state.mode === 'drive', speed: state.mode === 'drive' ? Math.abs(player.speed) : W.speed });
+    if (!state.paused && state.mode !== 'interior' && state.mode !== 'metro' && edges.near(f)) ui.toast('Road closed', 'Namma Metro Phase 3 work since 2017. Diversion ahead (there is no diversion).', 'cone');
     const rainHere = state.mode === 'interior' ? ws.rain * 0.3 : ws.rain;
-    audio.update(state.mode === 'drive' ? player.type : 'none', player.speed, input.throttle, rainHere, f.x, f.z, state.mode === 'drive' ? player.heading : W.yaw);
+    audio.update(state.mode === 'drive' ? player.type : 'none', player.speed, ctl.throttle, rainHere, f.x, f.z, state.mode === 'drive' ? player.heading : W.yaw);
     updateCamera(dt); mark('misc');
 
     if (state.mode !== 'interior') {
       const z = world.zoneAt(f.x, f.z); ui.setZone(z);
-      if (z.name !== lastZoneName) { lastZoneName = z.name; if (z.name === 'Vidhana Soudha') ui.toast('🏛️ Look up!', 'Drag the mouse up (or press <b>C</b> for first person) to read the inscription.'); }
+      if (z.name !== lastZoneName) { lastZoneName = z.name; if (z.name === 'Vidhana Soudha') ui.toast('Look up!', `Drag the mouse up (or press ${K('camera')} for first person) to read the inscription.`, 'landmark'); }
     }
     uiT -= rawDt;
     if (uiT <= 0) { uiT = 1 / 12; ui.update({ hours: state.hours, weather: state.weather, temp: ws.temp, live: state.live, speed: player.speed, vehicle: VEHICLE_STATS[player.type].label, vehicleType: player.type, mode: state.mode, ride: game.ride, collected: game.collected, totalCollect: game.totalCollectibles, wallet: game.wallet, rawDt: 0, dayName: life.dayName(state.day), health: player.health });
@@ -779,7 +852,7 @@ async function init() {
   renderer.compile(scene, camera);
   frame();
   // debug handle for automated checks: __game.step(n) advances n frames synchronously
-  window.__game = { state, player, world, actions, weather, camera, keys, renderer, game, W, hooks, traffic, prof, scene, composer, sun, bloom, gtao, quality, get phys() { return phys; }, flood, edges, nav, people, signals, camCtl, tow, step: (n = 1, dt = 1 / 30) => { for (let i = 0; i < n; i++) tick(dt); } };
+  window.__game = { state, player, world, actions, weather, camera, keys: input.held, input, overlays, ui, life, audio, renderer, game, W, hooks, traffic, prof, scene, composer, sun, bloom, gtao, quality, get phys() { return phys; }, flood, edges, nav, people, signals, camCtl, tow, step: (n = 1, dt = 1 / 30) => { for (let i = 0; i < n; i++) tick(dt); } };
 }
 
 init().catch((e) => {

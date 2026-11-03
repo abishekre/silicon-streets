@@ -14,7 +14,7 @@ export function createEdges(scene, world) {
   const vY = new THREE.Vector3(0, 1, 0);
 
   // ---------- barricades where roads leave the map ----------
-  const signTex = textTexture(['ROAD CLOSED', 'Namma Metro Phase 3 work · since 2017', 'Inconvenience regretted 🙏'], { w: 512, h: 256, bg: '#f2c230', fg: '#111', font: '700 34px "Space Grotesk"' });
+  const signTex = textTexture(['ROAD CLOSED', 'Namma Metro Phase 3 work · since 2017', 'Inconvenience regretted'], { w: 512, h: 256, bg: '#f2c230', fg: '#111', font: '700 34px "Space Grotesk"' });
   const signMat = new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.7, emissive: '#ffffff', emissiveMap: signTex, emissiveIntensity: 0.08 });
   const parts = [], signs = [], crossings = [];
   const clip = (a, b) => {

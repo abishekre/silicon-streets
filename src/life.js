@@ -123,7 +123,7 @@ export function createLife(scene, world, ui, audio) {
 
   // ---------- radio ----------
   let djT = 20;
-  function radioNext() { const name = audio.setStation((['Off', 'Namma 93.FM', 'Lo-fi Koramangala 101'].indexOf(audio.station) + 1)); ui.toast('📻 Radio', name === 'Off' ? 'Radio off.' : `Tuned to <b>${name}</b>.`); djT = 6; }
+  function radioNext() { const name = audio.setStation((['Off', 'Namma 93.FM', 'Lo-fi Koramangala 101'].indexOf(audio.station) + 1)); ui.toast('Radio', name === 'Off' ? 'Radio off.' : `Tuned to <b>${name}</b>.`, 'radio'); djT = 6; }
 
   let birdT = 4, bellT = 10, hawkT = 15, lastMatch = null, lastSunday = null, dogToast = 0;
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pv = new THREE.Vector3();
@@ -134,7 +134,7 @@ export function createLife(scene, world, ui, audio) {
     // ---- RCB match nights: Wednesday and Saturday 7–11 PM
     const match = (day === 3 || day === 6) && hr >= 19 && hr < 23;
     if (crowd) crowd.visible = match;
-    if (match !== lastMatch) { lastMatch = match; if (match) ui.toast('🏏 RCB match night!', 'Chinnaswamy is packed. Expect traffic and very loud horns. Ee sala cup namde!'); }
+    if (match !== lastMatch) { lastMatch = match; if (match) ui.toast('RCB match night!', 'Chinnaswamy is packed. Expect traffic and very loud horns. Ee sala cup namde!', 'cricket'); }
     if (match && world.stadium) {
       const d = Math.hypot(s.focus.x - world.stadium.x, s.focus.z - world.stadium.z);
       audio.setCrowd(Math.max(0, 1 - d / 400) * 1.5);
@@ -142,7 +142,7 @@ export function createLife(scene, world, ui, audio) {
     } else audio.setCrowd(s.zone && /Road|Street/.test(s.zone) ? 0.35 : 0.1);
     // ---- Sunday morning: Cubbon Park is car-free
     const sunday = day === 0 && hr >= 6 && hr < 10;
-    if (sunday !== lastSunday) { lastSunday = sunday; if (sunday) ui.toast('🌳 Sunday in Cubbon Park', 'Car-free till 10 AM. Joggers, dogs, and cycling groups everywhere.'); }
+    if (sunday !== lastSunday) { lastSunday = sunday; if (sunday) ui.toast('Sunday in Cubbon Park', 'Car-free till 10 AM. Joggers, dogs, and cycling groups everywhere.', 'tree'); }
     // ---- birds in the park in the morning, bells near churches
     birdT -= dt; bellT -= dt; hawkT -= dt;
     if (birdT <= 0) { birdT = 5 + Math.random() * 8; if (hr > 5.5 && hr < 18.5 && s.zone === 'Cubbon Park') audio.koel(Math.random() * 2 - 1); }
@@ -160,7 +160,7 @@ export function createLife(scene, world, ui, audio) {
         d.m.position.set(d.e.ax + d.e.dx * d.s + d.e.dz * d.lat, 0, d.e.az + d.e.dz * d.s - d.e.dx * d.lat); d.m.rotation.y = Math.atan2(d.e.dx * d.dir, d.e.dz * d.dir);
       }
       d.barkCd -= dt;
-      if (dd < 9 && s.speed > 6 && d.barkCd <= 0) { d.barkCd = 6; audio.bark(); if (dogToast <= 0) { dogToast = 60; ui.toast('🐕 Woof!', 'A street dog chased you for 20 metres. Standard procedure.'); } }
+      if (dd < 9 && s.speed > 6 && d.barkCd <= 0) { d.barkCd = 6; audio.bark(); if (dogToast <= 0) { dogToast = 60; ui.toast('Woof!', 'A street dog chased you for 20 metres. Standard procedure.', 'paw'); } }
     }
     // ---- Deepavali nights
     const night = s.lights > 0.4;
@@ -179,7 +179,7 @@ export function createLife(scene, world, ui, audio) {
     fwMesh.count = n; fwMesh.instanceMatrix.needsUpdate = true; if (fwMesh.instanceColor) fwMesh.instanceColor.needsUpdate = true;
     // ---- radio
     audio.radioTick(s.driving);
-    if (s.driving && audio.station !== 'Off') { djT -= dt; if (djT <= 0) { djT = 35 + Math.random() * 25; const L = DJ[audio.station]; ui.dialogue('📻 ' + L[Math.floor(Math.random() * L.length)]); } }
+    if (s.driving && audio.station !== 'Off') { djT -= dt; if (djT <= 0) { djT = 35 + Math.random() * 25; const L = DJ[audio.station]; ui.dialogue('Radio: ' + L[Math.floor(Math.random() * L.length)]); } }
   }
   return { update, radioNext, deepavali, dayName: (d) => DAYS[d], get startDay() { return ev.day; } };
 }

@@ -205,6 +205,6 @@ export function createMetroRide(mainScene, world, ui, audio) {
       if (done || R.t > 22) next();
     }
   }
-  function toggleView() { R.view = R.view === 'inside' ? 'outside' : 'inside'; ui.toast('🎥 Metro camera', R.view === 'inside' ? 'Inside the coach' : 'Outside view'); }
+  function toggleView() { R.view = R.view === 'inside' ? 'outside' : 'inside'; ui.toast('Metro camera', R.view === 'inside' ? 'Inside the coach' : 'Outside view', 'video'); }
   return { start, update, skip, toggleView, get active() { return R.active; }, get scene() { return R.scene; }, get phase() { return R.phase; }, get focus() { return R.phase && R.phase.startsWith('viaduct') ? viaTrain.position : null; } };
 }
