@@ -93,3 +93,28 @@ These estimates come from the measurements above. Each step is checked against t
 - [Cascaded shadow maps cost in three.js (forum)](https://discourse.threejs.org/t/cascaded-shadow-maps/7242)
 - [Babylon Lite static cascaded-shadow cache design](https://doc.babylonjs.com/lite/architecture/17-cascaded-shadow)
 - [three-csm](https://github.com/vtHawk/three-csm)
+
+## Progress (3 Nov 2026)
+
+Done:
+- **Step 1:** the F3 overlay shows the GPU name (flagging integrated graphics) and GPU time per pass. There is a 90 s benchmark drive in Settings → Graphics.
+- **Step 2:**
+  - edge scenery, bus shelters and signal poles stream with the map;
+  - vehicles have a far model and only the ones in view are drawn;
+  - trees, lamps, light pools and bulbs are one BatchedMesh per kind;
+  - opaque draw order is buildings → ground layers top-down → sky last.
+  - At the MG Road start on High: **214 → 132 draw calls, 1.27M → 0.34M triangles**. The scene pass on Intel UHD went from 20.4 to 14.4 ms in a back-to-back test.
+- **Step 3:**
+  - Ultra renders at native resolution, with half-resolution AO, MSAA 4× only, and 4096 shadows every 2nd frame;
+  - Medium uses SMAA instead of MSAA 2×, because on integrated graphics the MSAA resolve was the most expensive single step;
+  - CAS sharpening runs below native resolution;
+  - saved presets now follow the current definitions.
+- **Step 5:** three.js r170 → r186.1, which fixes `BatchedMesh.optimize()`. `Clock` was replaced with `Timer`, and PCF shadows replace the PCFSoft type that was removed.
+
+Measured on the integrated Intel UHD (1024×768 window): Medium is about 21 ms of GPU time per frame. On this GPU, GTAO costs about 32 ms even at half resolution, so Ultra stays a setting for dedicated GPUs.
+
+Not done yet, with the reason:
+- **People LOD.** People are 7 draw calls and about 80k triangles. The remaining cost is per pixel, not per triangle.
+- **Baked AO.** Building walls already darken towards the ground through vertex colours, and GTAO is only on by default on Ultra.
+- **Two-cascade shadows and the static shadow cache.** Shadows are now 1–5 ms. Revisit if a dedicated-GPU benchmark shows them dominating.
+- **Step 4 (workers).** The simulation is about 2.5–3.5 ms of main-thread time and sending draw commands is about 5 ms. This is worth doing for weaker CPUs, but it means reworking how physics, traffic, people, jobs and the tow truck talk to each other.

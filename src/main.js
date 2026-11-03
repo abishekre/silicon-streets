@@ -98,7 +98,7 @@ async function init() {
   renderer.info.autoReset = false;
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap; // (three r18x folded the soft variant into this one)
   renderer.toneMapping = THREE.NeutralToneMapping;
   $('app').appendChild(renderer.domElement);
 
@@ -609,7 +609,7 @@ async function init() {
   if (hasSave) { $('newBtn').classList.add('on'); $('newBtn').onclick = () => begin(false); }
 
   // ---------- loop ----------
-  const clock = new THREE.Clock();
+  const clock = new THREE.Timer(); clock.connect(document);
   let t = 0, lastZoneName = '';
   const camPos = new THREE.Vector3(), camLook = new THREE.Vector3(), tmp = new THREE.Vector3();
   camera.position.set(player.pos.x - 30, 25, player.pos.z + 30);
@@ -769,7 +769,7 @@ async function init() {
     pt = performance.now();
     input.poll(padButton); handlePresses();
     // paused: dt is 0, so the clock, traffic and everything else hold still while the frame keeps rendering
-    const rawDt = clock.getDelta(), dt = state.paused ? 0 : forceDt ?? Math.min(rawDt, 0.05);
+    clock.update(); const rawDt = clock.getDelta(), dt = state.paused ? 0 : forceDt ?? Math.min(rawDt, 0.05);
     t += dt;
     readInput();
     const prevHours = state.hours;
