@@ -153,7 +153,12 @@ export function createMissions({ world, game, ui, audio, scene, navTo, clearNav,
   const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
   function objective() {
     const el = document.getElementById('objective'); if (!el) return;
-    if (!S.active || !cur) { el.classList.remove('on'); return; }
+    if (!S.active || !cur) {
+      // no mission: the line suggests the next good thing to do (main.js sets idleHint)
+      const h = api.idleHint && api.idleHint();
+      if (h) { el.innerHTML = `<b>${h[0]}</b><span>${h[1]}</span>`; el.classList.add('on'); } else el.classList.remove('on');
+      return;
+    }
     const M = MISSIONS[S.active], txt = typeof cur.text === 'function' ? cur.text(S.vars) : cur.text || (cur.choice ? 'Make your choice' : '');
     const left = M.deadline ? M.deadline - S.t : null;
     el.innerHTML = `<b>${M.title}</b><span>${txt}${left != null && !S.vars.late ? ` · <em>${fmt(Math.max(0, left))}</em>` : ''}</span>`; el.classList.add('on');
@@ -168,6 +173,7 @@ export function createMissions({ world, game, ui, audio, scene, navTo, clearNav,
       const id = ORDER.find((k) => !S.done[k] && (!MISSIONS[k].needs || MISSIONS[k].needs !== 'drive' || state.mode === 'drive'));
       if (id) offer(id);
     }
+    if ((objT -= dt) <= 0) { objT = 0.5; objective(); }
     if (!S.active || !cur) return;
     const M = MISSIONS[S.active];
     S.t += dt;
@@ -176,7 +182,6 @@ export function createMissions({ world, game, ui, audio, scene, navTo, clearNav,
       const p = cur.on === 'drive' ? (state.mode === 'drive' ? player.pos : null) : cur.on === 'foot' ? (state.mode === 'walk' ? W.pos : null) : state.mode === 'interior' ? null : here();
       if (p && dist(p, target) < (cur.r || 6)) next();
     }
-    if ((objT -= dt) <= 0) { objT = 0.5; objective(); }
   }
 
   // sleep at your PG: rest, full energy, and the game saves
@@ -185,7 +190,7 @@ export function createMissions({ world, game, ui, audio, scene, navTo, clearNav,
     return d < 4 ? { d, label: 'sleep at your PG (8 hours)', run: () => hooks.sleep && hooks.sleep() } : null;
   }
 
-  return {
+  const api = {
     update, start, cancel, offer, homeAction, missions: MISSIONS, order: ORDER,
     set phone(p) { phone = p; },
     get state() { return S; }, get home() { return S.home; },
@@ -194,4 +199,5 @@ export function createMissions({ world, game, ui, audio, scene, navTo, clearNav,
     save: () => ({ done: S.done, home: S.home }),
     load(s) { if (!s) return; S.done = s.done || {}; S.home = s.home || null; if (S.home) hooks.homeChanged && hooks.homeChanged(S.home); },
   };
+  return api;
 }

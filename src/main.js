@@ -625,16 +625,16 @@ async function init() {
       if (v > 6 && tag !== 'tree' && tag !== 'cow') fx.burst('sparks', sx, 0.6, sz, Math.min(24, k * 3));
       if (tag === 'tree') fx.burst('leaves', p.x, 3.5, p.z, 20, { spread: 4, up: 1 });
       player.damage(dmg);
-      if (player.broken && once('broke', 5)) ui.toast('Your vehicle broke down', `Press ${K('call')} to call a roadside mechanic (₹150).`, 'crash');
-      else if (player.health < 35 && once('lowhp', 25)) ui.toast('Badly damaged', `Health ${Math.round(player.health)}%. Steering is pulling, engine is smoking.`, 'warning');
-      if (tag === 'cow') { audio.moo(); if (once('cow', 8)) ui.toast('The cow does not care.', 'Cows have right of way in Bengaluru. Always.', 'cow'); }
+      if (player.broken && once('broke', 5)) ui.toast('Your vehicle broke down', `Press ${K('call')} to call a roadside mechanic (₹50).`, 'crash');
+      else if (player.health < 35 && once('lowhp', 60)) ui.toast('Badly damaged', `Steering is pulling, engine is smoking. ${K('call')} calls a mechanic.`, 'warning');
+      if (tag === 'cow') { audio.moo(); ui.flavour('The cow does not care. Cows have right of way in Bengaluru.'); }
       else if (tag === 'vehicle' && hit && hit.v) {
         hit.v.dazed = 4; hit.v.speed = 0;
         const LINES = ['"Oye! Kannu kaanalva?"', '"Saar! New car, saar! Insurance ide na?"', '"Yen guru, driving school yelli kalitidiya?"', '"Ayyo! My mirror!"'];
-        if (once('veh', 4)) ui.toast(`${LINES[Math.floor(Math.random() * LINES.length)]}`, `The ${hit.v.type === 'bus' ? 'BMTC driver' : 'other driver'} is not happy. −${Math.round(dmg)}% vehicle health`, 'chat');
+        ui.flavour(`${hit.v.type === 'bus' ? 'BMTC driver' : 'Other driver'}: ${LINES[Math.floor(Math.random() * LINES.length)]}`, 8000);
         game.wallet.respect = Math.max(0, game.wallet.respect - Math.min(6, k));
-      } else if (tag === 'parked' && once('alarm', 6)) { audio.alarm && audio.alarm(); ui.toast('Car alarm!', 'Owner from the balcony: "YAARU ADU?!"', 'siren'); }
-      else if (tag === 'pole' && once('pole', 10)) ui.toast('You hit a lamp post', 'The cables above are swinging. BESCOM will hear about this.', 'bulb');
+      } else if (tag === 'parked' && once('alarm', 6)) { audio.alarm && audio.alarm(); ui.flavour('Car alarm! Owner from the balcony: "YAARU ADU?!"'); }
+      else if (tag === 'pole') ui.flavour('The cables above are swinging. BESCOM will hear about this.');
     },
     // hitting a person: they go down, the street turns on you, and it costs respect (and money if police are near)
     hitPed(p, speed) {
@@ -650,9 +650,9 @@ async function init() {
       audio.cheer && audio.cheer();
     },
     tumble(p, vx, vz) { if (phys) phys.tumble(p, vx, vz); },
-    pothole(v) { shake = 0.5; audio.bump(Math.min(1, v / 10)); game.onPothole(); if (once('pot', 20)) ui.toast('Pothole!', 'Welcome to Bengaluru roads. Your spine says hi.', 'pothole'); },
-    pedestrian() { if (once('ped', 6)) ui.toast('"Oi! Nodkond hogi!"', 'Watch where you\'re going.', 'walk'); },
-    honked() { if (once('honk', 7)) ui.toast('Honk honk!', '"Move aagi, anna! Signal green aagide!"', 'horn'); },
+    pothole(v) { shake = 0.5; audio.bump(Math.min(1, v / 10)); game.onPothole(); ui.flavour('Pothole! Your spine says hi.', 45000); },
+    pedestrian() { ui.flavour('"Oi! Nodkond hogi!" Watch where you\'re going.'); },
+    honked() { ui.flavour('"Move aagi, anna! Signal green aagide!"', 40000); },
   };
   const sim = createSim({ traffic, people, trafficGroup, peopleGroup, ev, audio, flood });
   // Rapier loads in the background (a 2 MB WebAssembly module); until then the simple collisions are used
@@ -689,6 +689,19 @@ async function init() {
   // story missions (phone messages) and side hustles (quick cash on the street)
   hooks.sleep = () => ui.fade(() => { state.hours = (state.hours + 8) % 24; game.wallet.energy = 100; const ok = saveGame(); ui.toast('Good morning', `Eight hours in your PG bed. Energy full${ok ? ', game saved' : ''}.`, 'save'); }, 'Sleeping…');
   const missions = createMissions({ world, game, ui, audio, scene, navTo, clearNav: () => nav.clear(), state, player, walker: W, actions, hooks });
+  // with no mission on, the objective line always says what's worth doing next
+  missions.idleHint = () => {
+    if (!state.started || state.mode === 'metro' || state.mode === 'interior') return null;
+    const r = game.ride, inr = (n) => `₹${Math.round(n).toLocaleString('en-IN')}`;
+    if (tow.impounded) return ['Impounded', `Your vehicle is at Namma Garage. Walk over and pay ${inr(garage.fee())}.`];
+    if (r.state === 'offer') return ['Job offer', `${K('accept')} to accept, ${K('decline')} to pass`];
+    if (r.state === 'waiting') return ['Pickup', `${r.from.name} · follow the blue arrows`];
+    if (r.state === 'riding') return ['Drop-off', `${r.to.name} · meter ${inr(r.fare)}`];
+    if (state.mode === 'walk') return ['On foot', `Gold coins on the street are quick cash. ${K('vehicle')} to get back in.`];
+    const cheapest = Math.min(...empire.props.map((p) => p.price));
+    if (!empire.owned) return game.wallet.money >= cheapest ? ['Get rich', 'You can afford your first property. Red FOR SALE boards are on the map.'] : ['Get rich', `Rides pay. Your first property costs ${inr(cheapest)}.`];
+    return ['Get rich', 'Sit down in any café: a VC is always at the next table.'];
+  };
   const hustles = createHustles({ scene, world, game, ui, audio, state, walker: W, player });
   game.addAction((w) => missions.homeAction(w)); game.addAction((w) => hustles.action(w));
   const phone = createPhone({ missions, game, tow, navTo, ui, actions, state, world, input, overlays, garage, player, walker: W, weather, renderer, composer, camera, orbit: () => orbit, openMap, home: { x: player.pos.x, z: player.pos.z } });
@@ -853,7 +866,7 @@ async function init() {
       W.vy -= 20 * dt; W.y += W.vy * dt;
       const g = G.groundAt(W.pos.x, W.pos.z, W.y);
       if (W.y <= g) {
-        if (W.vy < -13) { game.wallet.energy = Math.max(0, game.wallet.energy - 8); if (once('ouch', 4)) ui.toast('Ouch!', 'That was a long drop. Your knees disagree.', 'bandage'); shake = 0.6; }
+        if (W.vy < -13) { game.wallet.energy = Math.max(0, game.wallet.energy - 8); ui.flavour('Ouch. That was a long drop. Your knees disagree.', 6000); shake = 0.6; }
         W.y = g; W.vy = 0; W.ground = true;
       } else if (W.y > g + 0.05) W.ground = false;
       // grab a ledge in reach while pushing into it
@@ -1004,7 +1017,7 @@ async function init() {
     const spraying = wd > 0.05 && Math.abs(player.speed) > 3;
     flood.update(dt, ws.rain, spraying ? { x: player.pos.x, z: player.pos.z, vx: player.vel.x, vz: player.vel.y } : null);
     if (wd > 0.1 && flood.firstFlood()) ui.card('wave', 'Waterlogged!', 'One hour of rain and the junction is a lake. Your auto is now a boat.', 'Peak Bengaluru moment', true);
-    if (wd > 0.3 && player.type === 'auto' && once('stall', 30)) ui.toast('Engine sputtering', 'Water is up to the floorboard. Go slow or you will stall.', 'drop');
+    if (wd > 0.3 && player.type === 'auto' && once('stall', 30)) ui.flavour('The engine sputters: water up to the floorboard. Go slow.');
     edges.update(dt, camera.position, atm.hor, atm.night);
     if (!state.paused && state.mode !== 'interior' && state.mode !== 'metro') life.update(dt, { hours: state.hours, day: state.day, focus: f, mode: state.mode, zone: $('locName').textContent, lights: L, camera, driving: state.mode === 'drive', speed: state.mode === 'drive' ? Math.abs(player.speed) : W.speed });
     if (!state.paused) { realism.update(dt, { mode: state.mode, lights: L, ...realismCtx }); missions.update(dt, { t }); hustles.update(dt, t, f); empire.update(dt); events.update(dt, t, f); }

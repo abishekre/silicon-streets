@@ -35,7 +35,7 @@ export function createDogs(scene, world, ui, audio, wallet) {
   }
   let friend = null, biscuits = 0, toastCd = 0, nearMissCd = 0;
 
-  const say = (title, body) => { if (toastCd <= 0) { toastCd = 4; ui.toast(title, body, 'paw'); } };
+  const say = (title, body) => { if (toastCd <= 0) { toastCd = 4; ui.flavour(`${title}. ${body}`, 8000); } };
   function pet(d) {
     d.petCd = 45; d.mode = 'happy'; d.t = 2.5; d.wag = 3; audio.bark && audio.bark(0);
     ui.dialogue(PET[Math.floor(Math.random() * PET.length)]);

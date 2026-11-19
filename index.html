@@ -74,6 +74,10 @@
   #walletBox { display: flex; align-items: center; gap: 12px; font-size: var(--fs-s); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); max-height: 40px; overflow: hidden; transition: max-height .35s, opacity .35s, margin .35s, padding .35s; }
   #walletBox > span { display: inline-flex; align-items: center; gap: 4px; }
   #money { font-weight: 700; color: var(--g); font-variant-numeric: tabular-nums; }
+  #walletBox { position: relative; }
+  #walletBox .tick { position: absolute; left: 0; top: 100%; font-weight: 700; font-size: var(--fs-s); pointer-events: none; animation: tick 1.8s ease-out forwards; white-space: nowrap; }
+  #walletBox .tick.up { color: var(--g); } #walletBox .tick.down { color: #ff8a80; }
+  @keyframes tick { 0% { opacity: 0; transform: translateY(6px); } 15% { opacity: 1; transform: translateY(0); } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-10px); } }
   #respect { font-weight: 700; color: #ffe08a; } #respect.low { color: var(--red); }
   #energy { color: var(--mute); }
   .eb { width: 64px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.18); overflow: hidden; }
@@ -86,7 +90,7 @@
   #clock small { font-size: var(--fs-xs); color: var(--mute); font-weight: 500; }
   #wx { font-size: var(--fs-s); color: var(--txt); display: inline-flex; gap: 5px; align-items: center; white-space: nowrap; }
   #live { font-size: var(--fs-xs); font-weight: 700; letter-spacing: 1px; padding: 2px 7px; border-radius: 6px; background: #2a2f37; color: var(--mute); }
-  #live.on { background: #c62828; color: #fff; animation: pulse 1.6s infinite; }
+  #live { display: none; } #live.on { display: inline-block; background: #c62828; color: #fff; animation: pulse 1.6s infinite; }
   @keyframes pulse { 50% { opacity: .7; } }
   #minimap { width: 200px; height: 200px; border-radius: 12px; border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0,0,0,.35); pointer-events: auto; cursor: zoom-in; }
   #collectBox { padding: 5px 12px; font-size: var(--fs-s); display: inline-flex; gap: 6px; align-items: center; transition: opacity .35s; }
@@ -150,7 +154,7 @@
 
   /* bottom-right: speed, with the fare meter on top when there is one */
   #speedo { position: relative; padding: 10px 16px 12px; min-width: 160px; text-align: right; }
-  #meter { padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
+  #meter { padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--line); } #earned { display: none; }
   #meter .lbl { font-size: var(--fs-xs); letter-spacing: 1.5px; color: var(--mute); font-weight: 700; }
   #fare { font-size: var(--fs-l); font-weight: 700; color: var(--mute); font-variant-numeric: tabular-nums; }
   #meter.on #fare { color: #ff7a7a; text-shadow: 0 0 10px rgba(255,82,82,.5); }

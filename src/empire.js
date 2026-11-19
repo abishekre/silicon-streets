@@ -132,14 +132,17 @@ export function createEmpire({ scene, world, game, ui, audio, state, player, wal
     S.rentAcc += perHour * dh; S.hoursAcc += dh;
     if (S.hoursAcc >= 6) {
       S.hoursAcc = 0;
-      if (S.rentAcc >= 1) { const r = Math.round(S.rentAcc); S.rentAcc = 0; S.earnedRent += r; W$.earn(r, 'Rent from your tenants'); audio.cash && audio.cash(); ui.toast(`Rent: ${fmt(r)}`, ['Tenants paid. One asked for a "small adjustment".', 'Rent is in. The PG boys want a new geyser.', 'Paid on time. A Bengaluru miracle.'][Math.floor(Math.random() * 3)], 'building'); }
+      if (S.rentAcc >= 1) { const r = Math.round(S.rentAcc); S.rentAcc = 0; S.earnedRent += r; W$.earn(r, 'Rent from your tenants'); audio.cash && audio.cash(); ui.flavour(`Rent in: ${fmt(r)}. ${['One tenant asked for a "small adjustment".', 'The PG boys want a new geyser.', 'Paid on time. A Bengaluru miracle.'][Math.floor(Math.random() * 3)]}`, 0); }
     }
     // the news moves prices, every few in-game hours
     if ((S.newsT -= dh) <= 0) {
       S.newsT = 2.5 + Math.random() * 3;
       const p = props[Math.floor(Math.random() * props.length)], [k, line] = NEWS[Math.floor(Math.random() * NEWS.length)];
       S.hype[p.district] = Math.max(0.6, Math.min(3, (S.hype[p.district] || 1) * (1 + k)));
-      ui.toast('Namma Broker news', line.replace('{d}', p.district), k > 0 ? 'star' : 'warning');
+      // news only interrupts you about places you own; the rest is a passing line
+      const text = line.replace('{d}', p.district);
+      if (S.owned[p.id]) ui.toast('Namma Broker news', `${text} Your place there is now worth ${fmt(value(p))}.`, k > 0 ? 'star' : 'warning');
+      else ui.flavour(`Broker news: ${text}`, 60000);
       paint(p);
     }
     // and drift back towards normal, slowly
@@ -149,6 +152,7 @@ export function createEmpire({ scene, world, game, ui, audio, state, player, wal
     update, props,
     places: () => props.map((p) => ({ name: `${p.district}: ${p.name}`, x: p.x, z: p.z, icon: 'building' })),
     markers: () => props.map((p) => ({ x: p.x, z: p.z, c: S.owned[p.id] ? '#43a047' : '#e53935', icon: '₹' })),
+    get owned() { return Object.keys(S.owned).length; }, get round() { return S.round; },
     get worth() { return props.reduce((a, p) => a + (S.owned[p.id] ? value(p) : 0), 0); },
     save: () => ({ owned: S.owned, hype: S.hype, round: S.round, earnedRent: S.earnedRent }),
     load(s) { if (!s) return; Object.assign(S, { owned: s.owned || {}, hype: s.hype || {}, round: s.round || 0, earnedRent: s.earnedRent || 0 }); props.forEach(paint); },

@@ -58,10 +58,10 @@ export function createGame(scene, world, people, ui, audio, hooks) {
   const wallet = { money: 500, energy: 80, respect: 70, history: [] };
   let clock = { hours: 0, day: 0 };
   const log = (amount, label) => { wallet.history.unshift({ h: clock.hours, d: clock.day, amount: Math.round(amount), label }); if (wallet.history.length > 100) wallet.history.length = 100; };
-  wallet.earn = (amount, label) => { const a = Math.round(amount); log(a, label); wallet.money += a; };
+  wallet.earn = (amount, label) => { const a = Math.round(amount); log(a, label); wallet.money += a; ui.money && ui.money(a); };
   wallet.spend = (amount, label) => { amount = Math.round(amount); if (wallet.money < amount) return false; wallet.money -= amount; log(-amount, label); return true; };
   // a fine takes what you have (satire, not a debt trap)
-  wallet.fine = (amount, label) => { const paid = Math.min(wallet.money, Math.round(amount)); wallet.money -= paid; if (paid) log(-paid, label); return paid; };
+  wallet.fine = (amount, label) => { const paid = Math.min(wallet.money, Math.round(amount)); wallet.money -= paid; if (paid) { log(-paid, label); ui.money && ui.money(-paid); } return paid; };
 
   // ---------- named spots on the real map ----------
   function curb(x, z) {

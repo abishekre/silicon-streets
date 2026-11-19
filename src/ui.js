@@ -21,16 +21,36 @@ export function createUI(world, actions, input) {
   applyPrefs(false);
 
   const toasts = $('toasts');
+  // Notifications, calm by design: one toast on screen at a time (a short queue behind it, repeats dropped),
+  // small flavour lines as subtitles at most every 20 s, and money as a +₹ tick on the wallet.
+  const tq = []; let tShow = null;
   function toast(title, body = '', ic = 'info', kind = '') {
     if (api.onToast && api.onToast(title, body, ic, kind)) return; // gig news goes to the phone instead
+    if ((tShow && tShow.title === title) || tq.some((t) => t.title === title)) return;
+    tq.push({ title, body, ic, kind }); if (tq.length > 3) tq.shift();
+    if (!tShow) nextToast();
+  }
+  function nextToast() {
+    const t = tq.shift(); tShow = t || null; if (!t) return;
     const el = document.createElement('div');
-    el.className = 'toast ' + kind;
-    el.innerHTML = `${icon(ic)}<div class="t">${title}</div>${body ? `<div class="b">${body}</div>` : ''}<span class="tx">${icon('close')}</span>`;
-    el.onclick = () => el.remove();
-    toasts.prepend(el);
-    while (toasts.children.length > 3) toasts.lastChild.remove();
-    setTimeout(() => el.classList.add('out'), 4200);
-    setTimeout(() => el.remove(), 4700);
+    el.className = 'toast ' + t.kind;
+    el.innerHTML = `${icon(t.ic)}<div class="t">${t.title}</div>${t.body ? `<div class="b">${t.body}</div>` : ''}<span class="tx">${icon('close')}</span>`;
+    toasts.innerHTML = ''; toasts.prepend(el);
+    let gone = false;
+    const done = () => { if (gone) return; gone = true; el.classList.add('out'); setTimeout(() => { el.remove(); nextToast(); }, 350); };
+    el.onclick = done;
+    setTimeout(done, tq.length ? 2600 : 4000);
+  }
+  let flavourT = -1e9;
+  function flavour(text, gap = 20000) {
+    const now = performance.now(); if (now - flavourT < gap) return false;
+    flavourT = now; dialogue(text); return true;
+  }
+  function money(amount) {
+    const a = Math.round(amount); if (!a) return;
+    const el = document.createElement('span');
+    el.className = 'tick ' + (a > 0 ? 'up' : 'down'); el.textContent = `${a > 0 ? '+' : '−'}₹${Math.abs(a).toLocaleString('en-IN')}`;
+    $('walletBox').appendChild(el); setTimeout(() => el.remove(), 1800);
   }
 
   // ---------- right-middle slot: one job offer or one compact card at a time ----------
@@ -60,7 +80,7 @@ export function createUI(world, actions, input) {
     cardEl.onclick = hideCard;
     clearTimeout(card._t); card._t = setTimeout(hideCard, compact ? 4500 : 6000);
   }
-  function dismissAll() { cardEl.classList.remove('show'); side.queue.length = 0; toasts.innerHTML = ''; $('dialogue').classList.remove('show'); }
+  function dismissAll() { cardEl.classList.remove('show'); side.queue.length = 0; tq.length = 0; tShow = null; toasts.innerHTML = ''; $('dialogue').classList.remove('show'); }
   function dialogue(text) {
     const el = $('dialogue');
     el.textContent = text; el.classList.add('show');
@@ -195,7 +215,8 @@ export function createUI(world, actions, input) {
     $('vname').textContent = d.vehicle;
     const r = d.ride;
     $('meter').classList.toggle('on', r.state === 'riding');
-    $('meter').style.display = d.vehicleType === 'auto' ? '' : 'none';
+    // the fare meter only while you're on a job; the rest of the time the speed block is just speed and health
+    $('meter').style.display = r.state === 'waiting' || r.state === 'riding' ? '' : 'none';
     $('speedo').style.display = d.mode === 'drive' ? '' : 'none';
     $('fare').textContent = `₹${Math.round(r.fare)}`;
     const st = Math.round(r.rating);
@@ -437,7 +458,7 @@ export function createUI(world, actions, input) {
 
   const api = {
     offer, offerTick, nav, openMap, closeMap, get mapOpen() { return mapOpen; }, toast, card: cardTracked, dialogue, prompt, setZone, drawMinimap, update, sync,
-    showSettings, hideSettings, settingsKey, showPause, hidePause, pauseKey, fmtTime, menu, closeMenu, frame, dismissAll, menuKey, fade, kbd, prefs,
+    showSettings, hideSettings, settingsKey, showPause, hidePause, pauseKey, fmtTime, menu, closeMenu, frame, dismissAll, menuKey, fade, kbd, prefs, flavour, money,
     get menuOpen() { return menuOpen; }, get fps() { return fps; }, onClosed: null, onOpened: null, onKeysChanged: null, onToast: null, onOffer: null,
   };
   return api;
