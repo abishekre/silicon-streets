@@ -716,15 +716,16 @@ async function init() {
   // ---------- start ----------
   $('loading').remove();
   // the key list here comes from the keymap, so it always matches your bindings
-  const startKeys = () => { $('startKeys').innerHTML = [[['forward', 'left', 'back', 'right'], 'drive / walk'], [['vehicle'], 'get out / get in'], [['horn'], 'horn (mandatory)'], [['interact'], 'interact'], [['switchVehicle'], 'auto / scooter / car'], [['map'], 'map'], [['photo'], 'postcard photo'], [['controls'], 'all controls']].map(([as, l]) => `<div>${as.map(K).join('')} ${l}</div>`).join('') + '<div><kbd>Esc</kbd> pause · settings</div>'; };
+  const startKeys = () => { $('startKeys').innerHTML = [[['forward', 'left', 'back', 'right'], 'drive / walk'], [['interact'], 'interact'], [['vehicle'], 'get out / get in'], [['horn'], 'horn (mandatory)'], [['map'], 'map · fast travel'], [['phone'], 'phone']].map(([as, l]) => `<div>${as.map(K).join('')} ${l}</div>`).join('') + '<div><kbd>Esc</kbd> pause · settings</div>'; };
   startKeys(); ui.onKeysChanged = startKeys;
   const hasSave = (() => { try { return !!localStorage.getItem('blr.save'); } catch (e) { return false; } })();
   let begun = false;
   function begin(load) {
     audio.start(); state.started = true; $('start').classList.add('gone'); document.body.classList.add('playing'); grabMouse();
+    if (!ui.prefs.reduce) intro = { t: 0, pos: camera.position.clone(), q: camera.quaternion.clone() };
     if (begun) return; begun = true;
-    if (load && loadGame()) setTimeout(() => ui.toast('Welcome back', 'Your saved game is loaded.', 'save'), 600);
-    else setTimeout(() => ui.toast('Namaskara!', `You're an auto driver on MG Road. ${K('vehicle')} to get out and walk, ${K('controls')} for controls, <kbd>Esc</kbd> to pause.`, 'auto'), 600);
+    if (load && loadGame()) setTimeout(() => ui.toast('Welcome back', 'Your saved game is loaded.', 'save'), 2200);
+    else setTimeout(() => ui.toast('Namaskara, Bengaluru!', `You drive an auto. ${['forward', 'left', 'back', 'right'].map(K).join(' ')} to drive, the mouse to look around, <kbd>Esc</kbd> for everything else.`, 'auto'), 2200);
   }
   $('startBtn').disabled = false; $('startBtn').innerHTML = hasSave ? `${icon('play')} Continue` : 'Start roaming';
   $('startBtn').onclick = () => begin(hasSave);
@@ -788,12 +789,22 @@ async function init() {
     phys && phys.nudge(p.x, p.z, vx, vz);
     if (vn > 5) ev.crash(vn, 'deck');
   }
+  // the road the title camera glides along: MG Road where you start, facing the way you're parked
+  const titleRoad = (() => { const s = world.nearestRoad(player.pos.x, player.pos.z, 60) || { dx: 0, dz: 1 }; return { x: player.pos.x, z: player.pos.z, dx: s.dx, dz: s.dz }; })();
+  let intro = null;
   function updateCamera(dt) {
     if (state.photo) { orbit.update(); return; }
     if (state.mode === 'metro') { ride.update(dt, camera); if (ride.scene) renderPass.scene = ride.scene; return; }
     if (window.__game && window.__game.debugCam) { const d = window.__game.debugCam; camera.position.set(...d.pos); camera.lookAt(...d.look); camera.updateProjectionMatrix(); return; }
     const f =state.mode === 'drive' ? player.pos : W.pos;
-    if (!state.started || (state.camera === 'cine' && state.mode !== 'interior')) {
+    // title screen: a slow aerial orbit over MG Road at golden hour, high enough to clear every rooftop
+    if (!state.started) {
+      const a = t * 0.035, d = titleRoad;
+      camPos.set(d.x + Math.sin(a) * 95, 46 + Math.sin(t * 0.15) * 3, d.z + Math.cos(a) * 95);
+      camera.position.lerp(camPos, 1 - Math.exp(-2 * dt));
+      camera.lookAt(d.x - Math.sin(a) * 60, 6, d.z - Math.cos(a) * 60); camera.fov = 55; camera.updateProjectionMatrix(); return;
+    }
+    if (state.camera === 'cine' && state.mode !== 'interior') {
       const a = t * 0.1, R = state.started ? 26 : 40;
       camPos.set(f.x + Math.sin(a) * R, state.started ? 14 : 22, f.z + Math.cos(a) * R);
       camera.position.lerp(camPos, 1 - Math.exp(-2 * dt)); camera.lookAt(f.x, 3, f.z); return;
@@ -810,6 +821,12 @@ async function init() {
       if (state.camera === 'first') firstCam(W.pos.x, W.pos.z, 1.62 + W.y, camCtl.walkYaw);
       else chaseCam(dt, W.pos.x, W.pos.z, camCtl.walkYaw, (inside ? 2.6 : 3.8) * Math.min(camCtl.zoom, inside ? 1.2 : 3.2), 1.7 + W.y, 1.45 + W.y, inside ? (v) => (W.venue ? venues.clampCam(v) : interior.clampCam(v)) : null);
       camera.fov = damp(camera.fov, 60, 3, dt);
+    }
+    // the swoop from the title glide down to you, once, when the game starts
+    if (intro) {
+      intro.t += dt; const k = Math.min(1, intro.t / 2), e = k * k * (3 - 2 * k);
+      camera.position.lerpVectors(intro.pos, camera.position, e); camera.quaternion.slerpQuaternions(intro.q, camera.quaternion, e);
+      if (k >= 1) intro = null;
     }
     if (ui.prefs.reduce) shake = 0;
     if (shake > 0 && dt > 0) { camera.position.add(tmp.set((Math.random() - 0.5) * shake * 0.4, (Math.random() - 0.5) * shake * 0.3, (Math.random() - 0.5) * shake * 0.4)); shake = Math.max(0, shake - dt * 2.5); }
