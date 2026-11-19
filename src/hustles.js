@@ -71,7 +71,7 @@ export function createHustles({ scene, world, game, ui, audio, state, walker: W,
       h.coin.rotation.y = t * 2; h.coin.position.y = 1.6 + Math.sin(t * 3 + h.x) * 0.12;
       if ((h.t -= dt) <= 0 && (!doing || doing.h !== h)) remove(h);
     }
-    if (state.mode !== 'interior' && live.length < 3 && (spawnT -= dt) <= 0) { spawnT = 8 + Math.random() * 10; spawn(focus); }
+    if (state.mode !== 'interior' && live.length < 3 && (spawnT -= dt) <= 0) { spawnT = state.mode === 'walk' ? 4 + Math.random() * 4 : 10 + Math.random() * 10; spawn(focus); } // on foot, this is how you earn
     if (doing) {
       const { h } = doing, w = state.mode === 'walk' ? W.pos : null;
       if (!w || Math.hypot(w.x - h.x, w.z - h.z) > 4) { ui.toast('You walked off', `${h.K.title}: no pay this time.`, 'warning'); doing = null; return; }

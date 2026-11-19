@@ -21,12 +21,8 @@ export const ACTIONS = [
   ['camera', 'Camera mode', 'Interface', ['KeyC', null]],
   ['photo', 'Photo mode', 'Interface', ['KeyP', null]],
   ['controls', 'Controls list', 'Interface', ['KeyI', null]],
-  ['dismiss', 'Dismiss notifications', 'Interface', ['KeyX', null]],
   ['mute', 'Mute', 'Interface', ['KeyU', null]],
-  ['timeSpeed', 'Time speed', 'World', ['KeyT', null]],
-  ['weather', 'Weather', 'World', ['KeyR', null]],
-  ['live', 'Live Bengaluru sync', 'World', ['KeyL', null]],
-  ['stats', 'Performance stats', 'World', ['F3', null]],
+  ['stats', 'Performance stats', 'Interface', ['F3', null]], // time, weather and live sync: Settings → Gameplay
 ];
 export const FIXED = ['Escape', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9'];
 // standard-mapping gamepad buttons: A B X Y, LB RB, back start, L3, d-pad up / down / right

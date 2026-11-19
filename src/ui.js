@@ -54,7 +54,7 @@ export function createUI(world, actions, input) {
   function card(ic, title, body, foot, compact = false) {
     if (compact && side.offer) { side.queue.push([ic, title, body, foot, compact]); return; }
     placeCard(compact);
-    cardEl.innerHTML = `<div class="e">${icon(ic)}</div><div class="k">PEAK BENGALURU MOMENT</div><div class="t">${title}</div><div class="b">${body}</div><div class="f">${foot} · click or ${kbd('dismiss')} to close</div>`;
+    cardEl.innerHTML = `<div class="e">${icon(ic)}</div><div class="k">PEAK BENGALURU MOMENT</div><div class="t">${title}</div><div class="b">${body}</div><div class="f">${foot} · click to close</div>`;
     cardEl.classList.toggle('compact', compact);
     cardEl.classList.remove('show'); void cardEl.offsetWidth; cardEl.classList.add('show'); fitRight();
     cardEl.onclick = hideCard;
@@ -203,12 +203,9 @@ export function createUI(world, actions, input) {
     $('rating').title = `Rating ${st} of 5`;
     $('earned').textContent = `₹${r.earned} earned · ${r.rides} ride${r.rides === 1 ? '' : 's'}`;
     $('collect').textContent = `${d.collected}/${d.totalCollect}`;
-    // what you owe (fines you couldn't pay, the garage loan) sits next to what you have
-    const owed = Math.round((d.wallet.debt || 0) + (d.wallet.loan || 0));
-    $('money').innerHTML = `₹${Math.round(d.wallet.money)}${owed ? `<span class="owed" title="Owed: Traffic Police dues ₹${Math.round(d.wallet.debt || 0)}, garage loan ₹${Math.round(d.wallet.loan || 0)}">−₹${owed}</span>` : ''}`;
+    put('money', `₹${Math.round(d.wallet.money).toLocaleString('en-IN')}`);
     put('respect', `${icon('respect')}${Math.round(d.wallet.respect)}`); $('respect').className = d.wallet.respect < 30 ? 'low' : '';
     if (!cache.energy) { cache.energy = 1; $('energy').insertAdjacentHTML('afterbegin', icon('bolt')); }
-    if (d.fuel != null) { $('vfuel').style.width = `${d.fuel}%`; $('vfuel').style.background = d.fuel < 15 ? '#ff5252' : '#4fc3f7'; }
     $('vhealth').style.width = `${d.health}%`; $('vhealth').style.background = d.health < 30 ? '#ff5252' : d.health < 60 ? '#ffb300' : '#3ddc84';
     $('energyBar').style.width = `${d.wallet.energy}%`;
     $('energyBar').style.background = d.wallet.energy < 20 ? '#ff5252' : d.wallet.energy < 45 ? '#ffb300' : '#3ddc84';

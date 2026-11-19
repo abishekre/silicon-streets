@@ -1307,7 +1307,7 @@ export function buildWorld(scene, data, opts = {}) {
     collide, solidAt, surfaceAt, zoneAt, setZoneFallback: (fn) => { fallbackZone = fn; }, update, nearestRoad, deckAt, insideBuilding, addPoly, addCircle, segGrid, nodes, junctionR, groundAt, inside, ladders, vidhanaTop,
     potholes, buildings, roads, parks, cubbon, vidhana, stadium, ubc, stations: kiosks, doors, vendors, benches, tracks,
     graph: { nodes: gNodes, edges: gEdges, grid: edgeGrid }, lamps: lampsAll, materials: M, bounds: BOUNDS,
-    // inside the playable area, at least m metres from its edge (for placing things: dogs, hustles, fuel stations…)
+    // inside the playable area, at least m metres from its edge (for placing things: dogs, hustles, cameras…)
     inMap: (x, z, m = 0) => x > BOUNDS.x1 + m && x < BOUNDS.x2 - m && z > BOUNDS.z1 + m && z < BOUNDS.z2 - m,
   };
 }

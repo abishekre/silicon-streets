@@ -21,11 +21,12 @@ const GIG = {
   Swiggly: { kind: 'scooter', icon: 'scooter', c: '#ff8a3d', fare: (m) => 60 + m * 0.06, word: 'Order', delivery: true },
   Zoomato: { kind: 'scooter', icon: 'food', c: '#ff5a6e', fare: (m) => 60 + m * 0.06, word: 'Order', delivery: true },
 };
+// one Jobs app opens the gig app for the vehicle you are in (Namma Auto, Swiggly or Oober)
 const APPS = [
-  ['Namma Auto', 'auto', '#f2c230'], ['Oober', 'car', '#dfe3e8'], ['Swiggly', 'scooter', '#ff8a3d'], ['Zoomato', 'food', '#ff5a6e'],
-  ['Maps', 'map', '#4fb3ff'], ['Camera', 'camera', '#b9c2cf'], ['Messages', 'chat', '#3ddc84'], ['NammaPay', 'cash', '#9d8cff'],
-  ['Metro', 'metro', '#c27be0'], ['Garage', 'wrench', '#ffb300'], ['Missions', 'flag', '#b388ff'], ['Settings', 'gear', '#9aa2ad'],
+  ['Jobs', 'bolt', '#f2c230'], ['Maps', 'map', '#4fb3ff'], ['Messages', 'chat', '#3ddc84'], ['NammaPay', 'cash', '#9d8cff'],
+  ['Missions', 'flag', '#b388ff'], ['Camera', 'camera', '#b9c2cf'], ['Metro', 'metro', '#c27be0'], ['Settings', 'gear', '#9aa2ad'],
 ];
+const JOB_APP = { auto: 'Namma Auto', scooter: 'Swiggly', car: 'Oober' };
 const CONTACTS = { amma: ['Amma', 'smile'], anna: ['Mechanic Anna', 'wrench'], landlord: ['Landlord', 'building'], police: ['Traffic Police', 'police'], support: ['Gig Support', 'chat'], broker: ['Broker Babu', 'building'], founder: ['Arjun (founder)', 'laptop'], kannada: ['Kannada Meshtru', 'chat'] };
 
 // scripted threads: each step is one message, with optional replies ([label, next step or null]) and an optional
@@ -35,7 +36,7 @@ const SCRIPT = {
   firstGig: { from: 'support', text: 'Congratulations on your first gig! Ratings above 4 get tips. Low ratings get fewer requests.', replies: [['Thanks', 'firstGig2'], ['How do I earn more?', 'firstGig3']] },
   firstGig2: { from: 'support', text: 'Happy to help. This chat is now closed. Please rate Gig Support 5 stars.' },
   firstGig3: { from: 'support', text: 'Surge pays more: rush hour (8:30 to 11, 5:30 to 9), rain and late nights. Every app shows its own queue.' },
-  towed: { from: 'police', text: 'Your vehicle was towed for obstructing traffic. It is at Namma Garage & Impound: pay the release fee there, take a garage loan, or earn it on foot first.', route: 'yard' },
+  towed: { from: 'police', text: 'Your vehicle was towed for obstructing traffic. It is at Namma Garage & Impound: pay the release fee there.', route: 'yard' },
   lowEnergy: { from: 'amma', text: 'Kanna, did you eat? You sound tired. Go have idli vada at a darshini.', replies: [['Yes Amma', 'lowEnergy2'], ['Not hungry', 'lowEnergy3']] },
   lowEnergy2: { from: 'amma', text: 'Good. Drink water also.' },
   lowEnergy3: { from: 'amma', text: 'Not hungry means hungry. Go and eat.', route: 'darshini' },
@@ -85,7 +86,7 @@ export function createPhone({ missions, game, tow, navTo, ui, actions, state, wo
   function nextBanner() {
     const b = bq.shift(); if (!b) return;
     ban.innerHTML = `<span class="pbi">${icon(b.ic)}</span><div><div class="pbt"><b>${esc(b.app)}</b> · now</div><div class="pbh">${esc(b.title)}</div>${b.body ? `<div class="pbb">${esc(b.body)}</div>` : ''}</div>`;
-    ban.onclick = () => { ban.classList.remove('on'); bT = 0; openApp(APPS.some((a) => a[0] === b.app) ? b.app : null); };
+    ban.onclick = () => { ban.classList.remove('on'); bT = 0; openApp(APPS.some((a) => a[0] === b.app) || GIG[b.app] || VIEWS[b.app] ? b.app : null); };
     ban.classList.remove('on'); void ban.offsetWidth; ban.classList.add('on'); bT = 3.6;
   }
   // gig toasts (titled with the app's name) become phone notifications; the HUD offer card stays for quick Y/N
@@ -218,7 +219,7 @@ export function createPhone({ missions, game, tow, navTo, ui, actions, state, wo
 
   function homeView() {
     const badge = (n) => (n ? `<span class="ph-badge">${n}</span>` : '');
-    const count = (a) => (a === 'Messages' ? Object.values(S.unread).reduce((x, y) => x + y, 0) : GIG[a] ? Q[a].list.length : 0);
+    const count = (a) => (a === 'Messages' ? Object.values(S.unread).reduce((x, y) => x + y, 0) : a === 'Jobs' ? Q[JOB_APP[player.type]].list.length : 0);
     return `<div class="ph-grid">${APPS.map(([a, ic, c]) => `<button class="ph-app" data-a="app:${a}"><span class="ai" style="background:${c}">${icon(ic)}${badge(count(a))}</span>${a}</button>`).join('')}</div>` +
       sec(`Notifications${N.length ? ` <button class="ph-link" data-a="clearN">Clear</button>` : ''}`, N.length ? N.slice(0, 12).map((n) => `<div class="ph-n">${icon(n.ic)}<div><div class="nt"><b>${esc(n.app)}</b> · ${n.t}</div><div>${esc(n.title)}</div>${n.body ? `<div class="ph-m">${esc(n.body)}</div>` : ''}</div></div>`).join('') : '<div class="ph-m">Nothing new.</div>');
   }
@@ -229,8 +230,6 @@ export function createPhone({ missions, game, tow, navTo, ui, actions, state, wo
     if (r.app === app && (r.state === 'waiting' || r.state === 'riding')) h += `<div class="ph-card on">${icon(G.icon)} <b>${r.state === 'waiting' ? (G.delivery ? 'Collect at' : 'Pick up at') : 'Drop at'}</b> ${esc((r.state === 'waiting' ? r.from : r.to).name)}${r.state === 'riding' ? ` · meter ${inr(r.fare)}` : ''}</div>`;
     if (r.state === 'offer' && r.app === app) h += `<div class="ph-card on">${icon('info')} Incoming: ${esc(r.from.name)} ${btn(`${icon('check')} Accept`, 'hudAccept', 'go')}</div>`;
     h += sec(`Requests near you <span class="ph-m">· new in ${Math.ceil(q.t)} s</span>`, q.list.length ? q.list.map((o) => `<div class="ph-o"><div><b>${G.delivery ? 'Pick up from' : 'Pickup at'} ${esc(o.from.name)}</b><div class="ph-m">${km(o.d)} away · est. ${inr(o.est)}${o.surge > 1 ? ` · ${o.surge}×` : ''}</div></div>${g ? (g.a ? btn(g.text, g.a) : `<span class="ph-gate">${g.text}</span>`) : btn('Accept', `accept:${o.id}`, 'go')}</div>`).join('') : '<div class="ph-m">No requests right now.</div>');
-    const wg = typeof game.walkGigs === 'function' ? game.walkGigs() : game.walkGigs;
-    if (Array.isArray(wg) && wg.length) h += sec('On foot', wg.map((x) => `<div class="ph-o">${icon(x.icon || 'walk')}<div><b>${esc(x.app)}</b><div class="ph-m">${esc(x.word)}</div></div></div>`).join('') + `<div class="ph-pad">${state.mode === 'walk' ? btn(`${icon('walk')} Ask for an on-foot job`, 'walkNow', 'go wide') : '<span class="ph-gate">Get out and walk to take these</span>'}</div>`);
     const total = Object.values(S.gig.apps).reduce((a, x) => a + x.earned, 0);
     h += sec('Today', `<div class="ph-kv"><span>Shift</span><b>${shift()}</b></div><div class="ph-kv"><span>${app}</span><b>${inr(today.earned)} · ${today.rides} ${G.word.toLowerCase()}${today.rides === 1 ? '' : 's'}</b></div><div class="ph-kv"><span>All apps</span><b>${inr(total)}</b></div>`);
     const rs = S.ratings.filter((x) => x.app === app).slice(0, 8);
@@ -274,12 +273,11 @@ export function createPhone({ missions, game, tow, navTo, ui, actions, state, wo
       return `<button class="ph-c" data-a="thread:${k}">${icon(ic)}<div><b>${n}</b><div class="ph-m">${esc(prev.replace('{call}', input.label('call')))}</div></div>${u ? `<span class="ph-badge">${u}</span>` : ''}</button>`;
     }).join('');
   }
-  const amt = (v) => (v && typeof v === 'object' ? v.amount ?? v.left ?? v.owed ?? 0 : v || 0);
   function payView() {
     const w = game.wallet, hist = Array.isArray(w.history) ? w.history.map((x) => ({ ...x, t: x.t ?? x.h })) : S.pay;
     const tm = (t) => (typeof t === 'number' ? (t < 24 ? ui.fmtTime(t).replace(/<[^>]+>/g, '') : new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })) : t || '');
     return head('NammaPay', '#9d8cff') + `<div class="ph-bal"><div class="ph-m">Balance</div><div class="bv">${inr(w.money)}</div>` +
-      (w.debt != null ? `<div class="ph-kv"><span>Debt</span><b class="neg">${inr(amt(w.debt))}</b></div>` : '') + (w.loan != null ? `<div class="ph-kv"><span>Loan</span><b>${inr(amt(w.loan))}</b></div>` : '') + '</div>' +
+      '</div>' +
       sec('Transactions', hist.length ? hist.slice(0, 40).map((x) => `<div class="ph-kv"><span>${esc(x.label)}<br><small class="ph-m">${tm(x.t)}</small></span><b class="${x.amount < 0 ? 'neg' : 'pos'}">${x.amount > 0 ? '+' : ''}${inr(x.amount)}</b></div>`).join('') : '<div class="ph-m">No payments yet.</div>');
   }
   // a QR made of noise, with three finder squares so it reads as one
@@ -302,7 +300,7 @@ export function createPhone({ missions, game, tow, navTo, ui, actions, state, wo
     const hp = Math.round(player.health), V = VEHICLE_STATS[player.type], yard = garage && garage.place ? garage.place : tow.yard;
     const status = tow.busy && !tow.impounded && tow.state.phase !== 'coming' ? 'On the tow truck' : tow.impounded ? 'Impounded' : player.broken ? 'Broken down' : hp < 35 ? 'Badly damaged' : hp < 70 ? 'Dented' : 'Running fine';
     let h = head('Garage', '#ffb300') + `<div class="ph-card">${icon(player.type)} <b>${V.label}</b> · ${status}<div class="ph-hb"><span style="width:${hp}%;background:${hp < 30 ? '#ff5252' : hp < 60 ? '#ffb300' : '#3ddc84'}"></span></div><div class="ph-m">Health ${hp}%${player.broken ? ` · press ${input.label('call')} for the mechanic` : ''}</div></div>`;
-    if (tow.impounded) h += `<div class="ph-card surge">${icon('truck')} At <b>Namma Garage &amp; Impound</b>. Release fee ${inr(garage ? garage.fee() : 500)}: pay at the counter, take a garage loan, or earn it on foot first.<div class="ph-act">${routeBtn(yard.x, yard.z, 'Namma Garage & Impound')}</div></div>`;
+    if (tow.impounded) h += `<div class="ph-card surge">${icon('truck')} At <b>Namma Garage &amp; Impound</b>. Release fee ${inr(garage ? garage.fee() : 150)}: pay at the counter.<div class="ph-act">${routeBtn(yard.x, yard.z, 'Namma Garage & Impound')}</div></div>`;
     const own = garage && (garage.owned || garage.vehicles || []).map((v) => (typeof v === 'string' ? { type: v, health: v === player.type ? player.health : null } : v));
     h += sec('Your vehicles', Array.isArray(own) && own.length ? own.map((v) => `<div class="ph-kv"><span>${icon(v.type || v.kind || 'auto')} ${esc(v.name || v.label || VEHICLE_STATS[v.type || v.kind]?.label || 'Vehicle')}</span><b>${v.health != null ? Math.round(v.health) + '%' : ''}</b></div>`).join('') : '<div class="ph-m">Visit Namma Garage to buy and upgrade vehicles.</div>');
     return h + `<div class="ph-pad">${outside() ? btn(`${icon('pin')} Route to garage`, `route:${Math.round(yard.x)},${Math.round(yard.z)},${encodeURIComponent(yard.name || 'Garage')}`, 'wide') : ''}</div>`;
@@ -324,6 +322,7 @@ export function createPhone({ missions, game, tow, navTo, ui, actions, state, wo
   }
   function openApp(app, sub = null) {
     if (app === 'Settings') { overlays.open('settings', 'graphics'); return; }
+    if (app === 'Jobs') app = JOB_APP[player.type] || 'Namma Auto';
     if (!overlays.has('phone')) overlays.open('phone');
     view.app = app; view.sub = sub; dirty = true; render();
   }
@@ -333,7 +332,6 @@ export function createPhone({ missions, game, tow, navTo, ui, actions, state, wo
     mstart: (id) => missions && missions.start(id), mdrop: () => missions && missions.cancel(),
     app: (a) => openApp(a), back, clearN: () => { N.length = 0; },
     accept: (id) => accept(+id), hudAccept: () => game.acceptOffer(), switch: (k) => actions.setVehicle(k),
-    walkNow: () => { game.walkGigNow && game.walkGigNow(); notify('Gigs', 'walk', 'Looking for on-foot jobs', 'An offer will pop up in a moment.', false); },
     route: (v) => { const [x, z, n] = v.split(','); const name = decodeURIComponent(n); navTo({ x: +x, z: +z, name }); notify('Maps', 'pin', 'Route set', `Follow the blue arrows to ${name}.`, false); },
     bigmap: () => openMap(), cam: startCam, photo: (id) => { view.sub = id; }, del: (id) => delPhoto(/^\d+$/.test(id) ? +id : id),
     thread: (c) => { view.sub = c; }, reply: (v) => { const [c, i, j] = v.split(','); reply(c, +i, +j); },

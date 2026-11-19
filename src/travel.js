@@ -1,5 +1,5 @@
 // Fast travel across the bigger map. Pick a place on the big map (or search it) and choose "fast travel":
-// driving, you skip the drive (time passes at Bengaluru traffic speed and the fuel still burns); on foot, an
+// driving, you skip the drive (time passes at Bengaluru traffic speed); on foot, an
 // Oober cab takes you (a fare, and your vehicle stays where you left it). Also the neighbourhoods as map places.
 const KX = 111320 * Math.cos(12.97525 * Math.PI / 180), KZ = 110574; // tools/osm2game.py proj()
 
@@ -22,7 +22,7 @@ const SKIPPED = [
 ];
 const RUSH = (h) => (h >= 8.5 && h < 11) || (h >= 17.5 && h < 21);
 
-export function createTravel({ world, game, ui, state, player, walker: W, realism, tow, origin, later }) {
+export function createTravel({ world, game, ui, state, player, walker: W, tow, origin, later }) {
   const lat0 = origin ? origin.lat : 12.97525, lon0 = origin ? origin.lon : 77.601;
   // kerbside on the nearest drivable road: where a vehicle can stop
   const kerb = (x, z, out = 1.4) => {
@@ -47,7 +47,6 @@ export function createTravel({ world, game, ui, state, player, walker: W, realis
     const q = { km, min, rush: RUSH(state.hours), rain };
     if (state.mode === 'drive') {
       q.mode = 'drive';
-      q.fuel = km * ({ auto: 2.4, scooter: 1.4, car: 2.8 }[player.type] || 2);
     } else {
       const surge = (q.rush ? 1.4 : 1) * (rain ? 1.6 : 1);
       q.mode = 'cab'; q.surge = surge; q.fare = Math.round((40 + 14 * km) * surge / 10) * 10;
@@ -63,15 +62,13 @@ export function createTravel({ world, game, ui, state, player, walker: W, realis
     if (missions.state.active && missions.missions[missions.state.active].deadline) return 'No shortcuts on a mission with a deadline.';
     if (hustles.doing) return 'You are in the middle of a side hustle.';
     if (state.mode === 'drive' && (tow.busy || tow.impounded)) return 'Your vehicle is with the tow truck.';
-    if (state.mode === 'drive' && player.dry) return 'Out of fuel. Fill up first.';
     if (q.km < 0.5) return 'It is right there. Just go.';
-    if (q.mode === 'drive' && q.fuel > realism.fuel) return `Not enough ${player.type === 'auto' ? 'CNG' : 'fuel'} for ${q.km.toFixed(1)} km. Fill up first.`;
     if (q.mode === 'cab' && game.wallet.money < q.fare) return `The cab is ₹${q.fare} and you have ₹${Math.floor(game.wallet.money)}.`;
     return null;
   }
   function label(q) {
     const t = q.min >= 60 ? `${Math.floor(q.min / 60)} h ${q.min % 60} min` : `${q.min} min`;
-    return q.mode === 'drive' ? `${q.km.toFixed(1)} km · ${t} in traffic · ${Math.round(q.fuel)}% ${player.type === 'auto' ? 'CNG' : 'fuel'}`
+    return q.mode === 'drive' ? `${q.km.toFixed(1)} km · ${t} in traffic`
       : `${q.km.toFixed(1)} km · ${t} · ₹${q.fare}${q.surge > 1 ? ` (${q.surge.toFixed(1)}x surge)` : ''}`;
   }
 
@@ -81,7 +78,6 @@ export function createTravel({ world, game, ui, state, player, walker: W, realis
     ui.fade(() => {
       state.hours = (state.hours + q.min / 60) % 24;
       if (q.mode === 'drive') {
-        realism.burn(q.km);
         player.pos.set(k.x, 0, k.z); player.heading = k.heading; player.park();
       } else {
         game.wallet.spend(q.fare, `Oober cab to ${p.name}`);

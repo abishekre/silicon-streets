@@ -14,7 +14,7 @@ const UPG = {
 };
 const PAINTS = { scooter: ['#e53935', '#1e88e5', '#fdd835', '#43a047', '#212121', '#fafafa'], car: ['#c62828', '#263238', '#f5f5f5', '#1565c0', '#8d6e63', '#ff7043'] };
 const LABEL = { auto: 'Auto', scooter: 'Scooter', car: 'Car' };
-export const RELEASE_FEE = 150, FIRST_FEE = 50, LOAN_MAX = 1500;
+export const RELEASE_FEE = 150, FIRST_FEE = 50;
 
 export function createGarage({ scene, world, tow, player, game, ui, audio, navTo }) {
   const yard = tow.yard, W = game.wallet;
@@ -61,17 +61,17 @@ export function createGarage({ scene, world, tow, player, game, ui, audio, navTo
   const fee = () => (S.tows <= 1 ? FIRST_FEE : RELEASE_FEE);
 
   // ---------- the counter ----------
-  function release(paidBy) {
+  function release(line) {
     tow.release(); ring.hide(); navTo(null);
-    ui.toast('Released', paidBy === 'loan' ? `On a garage loan: repay ₹${Math.round(fee() * 1.1)} out of your earnings.` : '"Park properly next time, saar."', 'receipt');
+    ui.toast('Released', line, 'receipt');
   }
+  // can't pay? the clerk lets it go anyway: this is satire, not a debt trap
   function impoundMenu() {
-    const f = fee(), items = [];
-    items.push({ name: `Pay the release fee and drive out`, price: f, desc: W.money >= f ? 'Your vehicle is right outside.' : `You have ₹${Math.round(W.money)}.`, onPick: () => { if (W.spend(f, 'Impound release fee')) { audio.cash && audio.cash(); release('cash'); } else ui.toast('Not enough money', 'Take a garage loan, or leave it here and earn the fee on foot.', 'cash'); } });
-    if (W.loan + f <= LOAN_MAX) items.push({ name: 'Garage loan: take it now, pay later', price: Math.round(f * 1.1), desc: '10% now, 10% more every day you owe. Half of what you earn goes to it.', onPick: () => { W.borrow(f, 'Garage loan'); W.spend(f, 'Impound release fee'); release('loan'); } });
-    else items.push({ name: 'Garage loan', price: null, desc: `Not available: you already owe ₹${Math.round(W.loan)}.`, onPick: () => impoundMenu() });
-    items.push({ name: 'Leave it here for now', price: null, desc: 'Earn the fee on foot: walking deliveries, tourists, flyers.', onPick: () => { game.walkGigNow && game.walkGigNow(); ui.toast('It stays at the garage', 'Walking gig offers will come to you. Come back with the fee.', 'walk'); } });
-    ui.menu({ title: 'Impound counter', kn: 'ವಾಹನ ಬಿಡುಗಡೆ', foot: S.tows <= 1 ? 'First offence: reduced fee' : 'Release fee', items });
+    const f = fee(), broke = W.money < f;
+    ui.menu({ title: 'Impound counter', kn: 'ವಾಹನ ಬಿಡುಗಡೆ', foot: S.tows <= 1 ? 'First offence: reduced fee' : 'Release fee', items: [
+      broke ? { name: 'Plead with the clerk', price: null, desc: `The fee is ₹${f}. You have ₹${Math.round(W.money)}.`, onPick: () => { W.fine(f, 'Impound release fee (what you had)'); release('Clerk: "Okay, okay. Go. Don\'t tell anyone." He keeps your chillar.'); } }
+        : { name: 'Pay the release fee and drive out', price: f, desc: 'Your vehicle is right outside.', onPick: () => { W.spend(f, 'Impound release fee'); audio.cash && audio.cash(); release('"Park properly next time, saar."'); } },
+    ] });
   }
   function shopMenu() {
     const items = [];
@@ -79,10 +79,9 @@ export function createGarage({ scene, world, tow, player, game, ui, audio, navTo
     for (const t of S.owned) items.push({ name: `Upgrades for your ${LABEL[t].toLowerCase()}`, price: null, desc: Object.keys(UPG).map((k) => `${UPG[k].label} ${S.up[t][k] || 0}/${UPG[k].prices.length}`).join(' · '), onPick: () => upgradeMenu(t) });
     const near = Math.hypot(player.pos.x - yard.x, player.pos.z - yard.z) < 30;
     if (player.health < 100) items.push({ name: 'Repair your vehicle', price: 80, desc: near ? 'Half what the roadside mechanic charges.' : 'Bring it here first (park by the shed).', onPick: () => { if (!near) return ui.toast('Bring it here', 'Park it by the garage, then come to the counter.', 'wrench'); if (W.spend(80, 'Garage repair')) { player.repair(); ui.toast('Good as new', 'Mostly.', 'wrench'); } else ui.toast('Not enough money', '₹80 for a repair.', 'cash'); } });
-    ui.menu({ title: 'Namma Garage', kn: 'ನಮ್ಮ ಗ್ಯಾರೇಜ್', foot: W.loan > 0 ? `Clear your ₹${Math.round(W.loan)} loan to buy` : 'Vehicles, upgrades, repairs', items });
+    ui.menu({ title: 'Namma Garage', kn: 'ನಮ್ಮ ಗ್ಯಾರೇಜ್', foot: 'Vehicles, upgrades, repairs', items });
   }
   function canBuy(price, what) {
-    if (W.loan > 0 || W.debt > 0) { ui.toast('Clear what you owe first', `₹${Math.round(W.loan + W.debt)} in loans and dues.`, 'receipt'); return false; }
     if (!W.spend(price, what)) { ui.toast('Not enough money', `₹${price}. You have ₹${Math.round(W.money)}.`, 'cash'); return false; }
     audio.cash && audio.cash(); return true;
   }
@@ -114,7 +113,7 @@ export function createGarage({ scene, world, tow, player, game, ui, audio, navTo
     S.tows++;
     ring.show(yard.x, yard.z);
     navTo({ ...place, keep: true });
-    ui.toast('Towed to Namma Garage', `Release fee ₹${fee()}${W.money < fee() ? '. Short on money? A garage loan, or earn it on foot.' : '.'} The route is on your map.`, 'truck');
+    ui.toast('Towed to Namma Garage', `Release fee ₹${fee()}. The route is on your map.`, 'truck');
   }
 
   return {

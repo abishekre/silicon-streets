@@ -47,7 +47,7 @@ Gigs pay the chai. The real money is satire:
 
 - **Namma Broker:** red FOR SALE boards in every neighbourhood, from a ₹8,000 "pre-launch plot near the upcoming metro" to a ₹15 lakh penthouse with a view of the jam. Property pays rent every 6 in-game hours. Prices swing with the news ("Metro line announced!", "Flyover postponed again"), so you can flip too.
 - **Startup pitches:** sit down in any café, darshini or pub. A VC is always at the next table. Pick an idea ("Uber for idli", "NFTs of Silk Board") and raise a round every few hours, from Friends & Family up to the IPO.
-- Side hustles (gold coins on the street) and on-foot gigs fill the gaps. Fines are small: the e-challan arrives by post in 2031.
+- Side hustles (gold coins on the street) are how you earn on foot. Fines are small: the e-challan arrives by post in 2031.
 
 ## Refresh or extend the map
 
@@ -65,9 +65,9 @@ python -X utf8 tools/osm2game.py a0.json a1.json ... public/data/map
 
 ### Making the map bigger
 
-1. Add a box to `tools/areas.json`, download, and convert (above). The converter writes the playable area (`play` in `index.json`) from where the buildings are. Everything sizes itself from that: world bounds, edge barricades, where dogs, side hustles, fuel stations, cameras, jobs and parked cars can appear, the tow yard, and the minimap (kept under 4096 px). Neighbourhood names for the map and fast travel are in `src/travel.js`.
+1. Add a box to `tools/areas.json`, download, and convert (above). The converter writes the playable area (`play` in `index.json`) from where the buildings are. Everything sizes itself from that: world bounds, edge barricades, where dogs, side hustles, cameras, jobs and parked cars can appear, the tow yard, and the minimap (kept under 4096 px). Neighbourhood names for the map and fast travel are in `src/travel.js`.
 2. **Frame rate** stays about the same. Meshes are built per 220 m tile in a worker as you move, and traffic, people and physics only exist around you.
-3. **Startup** loads `all.json` (every tile in one file) and sets up roads, buildings and collisions for the whole map. The per-tile files stay for later streaming. The current map (82,000 buildings, about 8 × 13 km) takes about 10 s to set up on a laptop. For a whole city, setup needs to load per tile too, and positions need re-centring every couple of km (see `docs/performance-plan.md`, step F).
+3. **Startup** loads `all.json` (every tile in one file) and sets up roads, buildings and collisions for the whole map. The current map (82,000 buildings, about 8 × 13 km) takes about 10 s to set up on a laptop. For a whole city, setup needs to load per tile too, and positions need re-centring every couple of km (see `docs/performance-plan.md`, step F).
 
 ## Controls
 
@@ -82,5 +82,5 @@ python -X utf8 tools/osm2game.py a0.json a1.json ... public/data/map
 | Map, pins, search, fast travel | M (or click the minimap), then pick a place |
 | Radio | K |
 | Camera · photo mode | C · P |
-| Weather · time · live sync | R · T · L |
+| Weather · time · live sync | Settings → Gameplay |
 | Settings · stats | Tab · F3 |

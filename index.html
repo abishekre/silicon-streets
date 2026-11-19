@@ -74,7 +74,6 @@
   #walletBox { display: flex; align-items: center; gap: 12px; font-size: var(--fs-s); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); max-height: 40px; overflow: hidden; transition: max-height .35s, opacity .35s, margin .35s, padding .35s; }
   #walletBox > span { display: inline-flex; align-items: center; gap: 4px; }
   #money { font-weight: 700; color: var(--g); font-variant-numeric: tabular-nums; }
-  #money .owed { color: #ff8a80; font-weight: 600; font-size: var(--fs-xs); margin-left: 6px; }
   #respect { font-weight: 700; color: #ffe08a; } #respect.low { color: var(--red); }
   #energy { color: var(--mute); }
   .eb { width: 64px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.18); overflow: hidden; }
@@ -161,7 +160,7 @@
   #speedo .u { font-size: var(--fs-xs); color: var(--mute); letter-spacing: 1px; margin-left: 4px; }
   #vname { font-size: var(--fs-xs); color: var(--y); font-weight: 700; margin-top: 4px; }
   #speedo .hb { height: 5px; margin-top: 6px; border-radius: 3px; background: rgba(255,255,255,.15); overflow: hidden; } #vhealth { display: block; height: 100%; width: 100%; background: var(--g); transition: width .3s; }
-  #speedo .fb { margin-top: 3px; height: 3px; } #vfuel { display: block; height: 100%; width: 100%; background: #4fc3f7; transition: width .3s; }
+  
 
   #bottomLeft { position: absolute; left: var(--gap); bottom: var(--gap); display: flex; gap: 8px; align-items: center; pointer-events: auto; }
   .btn { pointer-events: auto; cursor: pointer; color: var(--txt); font: 600 var(--fs-s) 'Space Grotesk'; padding: 8px 12px; display: inline-flex; gap: 8px; align-items: center; }
@@ -444,7 +443,7 @@
   <div id="offer" class="panel"></div>
   <div id="speedo" class="panel">
     <div id="meter"><div class="lbl">METER</div><div id="fare">₹0</div><div id="rating"></div><div id="earned">₹0 · 0 rides</div></div>
-    <div><span id="speed">0</span><span class="u">KM/H</span></div><div id="vname">Auto</div><div class="hb" title="Vehicle health"><span id="vhealth"></span></div><div class="hb fb" title="Fuel"><span id="vfuel"></span></div>
+    <div><span id="speed">0</span><span class="u">KM/H</span></div><div id="vname">Auto</div><div class="hb" title="Vehicle health"><span id="vhealth"></span></div>
   </div>
   </div>
   <div id="bottomLeft"><button id="menuBtn" class="panel btn" aria-label="Pause menu"></button></div>

@@ -10,7 +10,7 @@ import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildWorld } from './world.js';
 import { createSky, atmosphere } from './sky.js';
-import { createWeather, WEATHER_ORDER, istHours } from './weather.js';
+import { createWeather, istHours } from './weather.js';
 import { Player, createTraffic, createMetro, createParked, VEHICLE_STATS } from './vehicles.js';
 import { createPeople, createCharacter } from './people.js';
 import { createGame } from './game.js';
@@ -251,9 +251,8 @@ async function init() {
   tow.onImpound = () => garage.impounded();
   game.addAction((w) => garage.action(w));
   const venues = createVenues({ world, ui, audio, game, hooks });
-  // fuel and CNG stations, speed breakers, speed cameras, power cuts (src/realism.js)
-  const realism = createRealism({ world, ui, audio, player, game, hooks });
-  game.addDriveAction((p) => realism.fillAction(p));
+  // speed breakers, speed cameras, power cuts (src/realism.js)
+  const realism = createRealism({ world, ui, audio, player, game });
   const flashEl = Object.assign(document.createElement('div'), { style: 'position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:44' }); document.body.appendChild(flashEl);
   const realismCtx = {
     shake: (k) => { shake = Math.max(shake, k); },
@@ -271,7 +270,7 @@ async function init() {
   };
   // away from a named road, the place is the nearest neighbourhood (not "Central Bengaluru" in Kalyan Nagar)
   const KN_AREA = { 'MG Road': 'ಎಂ.ಜಿ. ರಸ್ತೆ', Indiranagar: 'ಇಂದಿರಾನಗರ', Koramangala: 'ಕೋರಮಂಗಲ', Banaswadi: 'ಬಾಣಸವಾಡಿ', 'Kalyan Nagar': 'ಕಲ್ಯಾಣ ನಗರ', Kammanahalli: 'ಕಮ್ಮನಹಳ್ಳಿ', Domlur: 'ದೊಮ್ಮಲೂರು', Madiwala: 'ಮಡಿವಾಳ', Ulsoor: 'ಹಲಸೂರು' };
-  const travel = createTravel({ world, game, ui, state, player, walker: W, realism, tow, origin: data.origin, later: () => ({ missions, hustles }) });
+  const travel = createTravel({ world, game, ui, state, player, walker: W, tow, origin: data.origin, later: () => ({ missions, hustles }) });
   const flag = (k, v) => { try { if (v === undefined) return localStorage.getItem('blr.' + k) === '1'; localStorage.setItem('blr.' + k, v ? '1' : '0'); } catch (e) { return false; } return v; };
   // property and startup money (src/empire.js)
   world.setZoneFallback((x, z) => { let b = null, bd = 1600; for (const d of travel.districts) { const k = Math.hypot(d.x - x, d.z - z); if (k < bd) { bd = k; b = d; } } return b && { name: b.name, kn: KN_AREA[b.name] || '' }; });
@@ -281,7 +280,7 @@ async function init() {
   life.trafficNews = () => { const a = events.active; return a && `Traffic: a ${a.kind === 'rally' ? 'political rally' : a.kind === 'baraat' ? 'wedding baraat' : 'Ganesha procession'} on ${a.road}. Avoid, or join. We won't judge.`; };
   const places = [
     ...travel.districts, ...empire.places(),
-    garage.place, ...realism.places(), ...(venues.mall ? [{ name: venues.mall.name, x: venues.mall.x, z: venues.mall.z, icon: 'city' }] : []),
+    garage.place, ...(venues.mall ? [{ name: venues.mall.name, x: venues.mall.x, z: venues.mall.z, icon: 'city' }] : []),
     ...world.stations.map((s) => ({ name: `${s.name} Metro`, x: s.ex, z: s.ez, icon: 'metro' })),
     ...(world.vidhana ? [{ name: 'Vidhana Soudha', x: world.vidhana.fx, z: world.vidhana.fz, icon: 'landmark' }] : []),
     ...(world.stadium ? [{ name: 'Chinnaswamy Stadium', x: world.stadium.x, z: world.stadium.z + world.stadium.r + 15, icon: 'cricket' }] : []),
@@ -337,14 +336,15 @@ async function init() {
   // ---------- save / load: one slot in this browser ----------
   function saveGame() {
     const p = player.pos;
-    try { localStorage.setItem('blr.save', JSON.stringify({ v: 1, hours: state.hours, day: state.day, weather: state.weather, vehicle: player.type, pos: [p.x, p.z, player.heading], wallet: { ...game.wallet }, found: game.found, missions: missions.save(), realism: realism.save(), garage: garage.save(), impounded: tow.impounded, dogs: dogs.save(), empire: empire.save() })); return true; } catch (e) { return false; }
+    try { localStorage.setItem('blr.save', JSON.stringify({ v: 1, hours: state.hours, day: state.day, weather: state.weather, vehicle: player.type, pos: [p.x, p.z, player.heading], wallet: { ...game.wallet }, found: game.found, missions: missions.save(), garage: garage.save(), impounded: tow.impounded, dogs: dogs.save(), empire: empire.save() })); return true; } catch (e) { return false; }
   }
   function loadGame() {
     let s = null; try { s = JSON.parse(localStorage.getItem('blr.save') || 'null'); } catch (e) { /* storage blocked */ }
     if (!s || s.v !== 1) return false;
-    Object.assign(game.wallet, s.wallet); state.hours = s.hours; state.day = s.day; state.weather = s.weather; weather.set(s.weather);
+    // older saves had dues and a garage loan: both are gone (and forgiven)
+    const { debt, loan, ...wallet } = s.wallet || {}; void debt; void loan; Object.assign(game.wallet, wallet); state.hours = s.hours; state.day = s.day; state.weather = s.weather; weather.set(s.weather);
     state.vehicle = s.vehicle; player.setType(s.vehicle); player.pos.set(s.pos[0], 0, s.pos[1]); player.heading = s.pos[2]; player.park(); game.restore(s.found);
-    if (s.impounded) tow.impoundNow(player); garage.load(s.garage); dogs.load(s.dogs); empire.load(s.empire); realism.load(s.realism); missions.load(s.missions); if (!garage.owns(player.type)) player.setType('auto');
+    if (s.impounded) tow.impoundNow(player); garage.load(s.garage); dogs.load(s.dogs); empire.load(s.empire); missions.load(s.missions); if (!garage.owns(player.type)) player.setType('auto');
     ui.sync(state); return true;
   }
   function quitToTitle() {
@@ -491,10 +491,6 @@ async function init() {
     }
   }
   function summon() {
-    if (state.mode === 'drive' && player.dry && !player.broken) {
-      ui.fade(() => { realism.refuel(25, 150, 'Mechanic Anna: a can of fuel'); state.hours = (state.hours + 0.25) % 24; ui.toast('Mechanic anna brought a can', '₹150. "Fill up properly next time, anna. Bunks are on the map."', 'wrench'); }, 'Mechanic anna is on the way with a can…');
-      return;
-    }
     if (state.mode === 'drive' && player.broken) {
       // roadside mechanic: a fade, a bill, a working vehicle
       ui.fade(() => {
@@ -504,7 +500,7 @@ async function init() {
       return;
     }
     if (state.mode !== 'walk' || tow.busy) return;
-    if (tow.impounded) { garage.route(); ui.toast('Your vehicle is impounded', `It's at Namma Garage & Impound: route set. Pay ₹${garage.fee()} there, take a garage loan, or earn it on foot.`, 'truck'); return; }
+    if (tow.impounded) { garage.route(); ui.toast('Your vehicle is impounded', `It's at Namma Garage & Impound: route set. Walk over and pay ₹${garage.fee()}.`, 'truck'); return; }
     const nr = world.nearestRoad(W.pos.x, W.pos.z, 80);
     if (!nr) { ui.toast('No road nearby', 'Walk closer to a street.', 'road'); return; }
     const side = ((W.pos.x - nr.x) * nr.dz - (W.pos.z - nr.z) * nr.dx) >= 0 ? 1 : -1, o = nr.r.hw - 1.4;
@@ -531,13 +527,9 @@ async function init() {
     vehicle: () => state.mode !== 'interior' && toggleVehicle(),
     call: () => summon(),
     photo: () => state.mode !== 'interior' && overlays.open('photo'),
-    timeSpeed: () => { actions.setTimeSpeed(cycle([0, 1, 60, 360], state.timeSpeed)); ui.toast('Time', state.timeSpeed ? `${state.timeSpeed}× speed` : 'Paused', 'timer'); },
-    weather: () => actions.setWeather(cycle(WEATHER_ORDER, state.weather)),
-    live: () => actions.toggleLive(),
     map: () => openMap(),
     mute: () => { const m = audio.toggleMute(); ui.toast(m ? 'Muted' : 'Sound on', '', m ? 'mute' : 'sound'); },
     controls: () => overlays.open('settings', 'controls'),
-    dismiss: () => ui.dismissAll(),
     radio: () => state.mode === 'drive' && life.radioNext(),
     accept: () => game.acceptOffer(),
     decline: () => game.declineOffer(),
@@ -1027,8 +1019,8 @@ async function init() {
       if (z.name !== lastZoneName) { lastZoneName = z.name; if (z.name === 'Vidhana Soudha') ui.toast('Look up!', `Drag the mouse up (or press ${K('camera')} for first person) to read the inscription.`, 'landmark'); }
     }
     uiT -= rawDt;
-    if (uiT <= 0) { uiT = 1 / 12; ui.update({ fuel: realism.fuel, hours: state.hours, weather: state.weather, temp: ws.temp, live: state.live, speed: player.speed, vehicle: VEHICLE_STATS[player.type].label, vehicleType: player.type, mode: state.mode, ride: game.ride, collected: game.collected, totalCollect: game.totalCollectibles, wallet: game.wallet, rawDt: 0, dayName: life.dayName(state.day), health: player.health });
-    if (state.mode !== 'interior') ui.drawMinimap(f, state.mode === 'drive' ? player.heading : W.yaw, [...game.markers(), ...garage.markers(), ...realism.markers(), ...missions.markers(), ...hustles.markers(), ...empire.markers(), ...events.markers(), ...(pinBeam.visible ? [{ x: pinBeam.position.x, z: pinBeam.position.z, c: '#ff4d6d', big: true }] : []), ...(state.mode === 'walk' ? [{ x: player.pos.x, z: player.pos.z, c: '#ffcf3f', icon: 'V', big: true }] : [])], traffic.vehicles, nav.route); }
+    if (uiT <= 0) { uiT = 1 / 12; ui.update({ hours: state.hours, weather: state.weather, temp: ws.temp, live: state.live, speed: player.speed, vehicle: VEHICLE_STATS[player.type].label, vehicleType: player.type, mode: state.mode, ride: game.ride, collected: game.collected, totalCollect: game.totalCollectibles, wallet: game.wallet, rawDt: 0, dayName: life.dayName(state.day), health: player.health });
+    if (state.mode !== 'interior') ui.drawMinimap(f, state.mode === 'drive' ? player.heading : W.yaw, [...game.markers(), ...garage.markers(), ...missions.markers(), ...hustles.markers(), ...empire.markers(), ...events.markers(), ...(pinBeam.visible ? [{ x: pinBeam.position.x, z: pinBeam.position.z, c: '#ff4d6d', big: true }] : []), ...(state.mode === 'walk' ? [{ x: player.pos.x, z: player.pos.z, c: '#ffcf3f', icon: 'V', big: true }] : [])], traffic.vehicles, nav.route); }
     ui.frame(rawDt);
 
     mark('ui');

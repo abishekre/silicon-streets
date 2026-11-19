@@ -97,7 +97,7 @@ export function createTow(scene, world, ui, audio) {
       player.pos.set(T.from.x + (bedX - T.from.x) * lift, 0, T.from.z + (bedZ - T.from.z) * lift);
       player.heading = T.from.h + (Math.atan2(L.dx, L.dz) - T.from.h) * lift; player.syncMesh();
       player.group.position.y = Math.sin(lift * Math.PI) * 1.6 + lift * 1.55;
-      // no money changes hands here: the release fee is paid at Namma Garage & Impound (cash, a garage loan, or later)
+      // no money changes hands here: the release fee is paid at Namma Garage & Impound 
       if (k >= 1) { T.phase = 'leaving'; T.t = 0; T.speed = 0; ui.toast('Towed!', 'Your vehicle is going to Namma Garage & Impound. Pay the release fee there.', 'truck'); }
     } else if (T.phase === 'leaving') {
       boom.rotation.y = 0;
