@@ -92,8 +92,9 @@ async function init() {
     low: { label: 'Low', res: 0.75, shadows: 0, ao: 'off', bloom: 'off', aa: 'fxaa', view: 'near', rain: 0.45, live: 'normal' },
     medium: { label: 'Medium', res: snapRes(Math.min(devicePixelRatio, 1)), shadows: 1024, ao: 'off', bloom: 'half', aa: 'smaa', view: 'medium', rain: 0.75, live: 'normal' },
     high: { label: 'High', res: snapRes(Math.min(devicePixelRatio, 1.5)), shadows: 2048, ao: 'off', bloom: 'half', aa: 'msaa4', view: 'far', rain: 1, live: 'busy' },
-    // Ultra renders at the screen's real resolution; Custom (Render resolution) can still go up to 2×
-    ultra: { label: 'Ultra', res: snapRes(Math.min(devicePixelRatio, 2)), shadows: 4096, ao: 'half', bloom: 'full', aa: 'msaa4', view: 'max', rain: 1.25, live: 'busy' },
+    // Ultra renders at the screen's real resolution; Custom (Render resolution) can still go up to 2×.
+    // Ambient occlusion is the costliest pass for the least visible gain, so it is a Custom option, off on every preset.
+    ultra: { label: 'Ultra', res: snapRes(Math.min(devicePixelRatio, 2)), shadows: 4096, ao: 'off', bloom: 'full', aa: 'msaa4', view: 'max', rain: 1.25, live: 'busy' },
   };
   const VIEW = { near: { far: 300, detail: 150, lod: 110 }, medium: { far: 420, detail: 200, lod: 160 }, far: { far: 520, detail: 270, lod: 230 }, max: { far: 700, detail: 360, lod: 320 } };
   // liveliness: share of the vehicle pool (200) and pedestrian pool (180) out on the streets
