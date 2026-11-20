@@ -182,6 +182,12 @@ export class Player {
       this.wheels.push({ pivot, mesh: m, r, front });
     }
     this.spot.position.set(0, 1.1, type === 'car' ? 2 : 1.3);
+    // brake lights: two glowing patches on the tail that flare when you brake (bright enough for bloom to catch)
+    model.body.computeBoundingBox(); const bb = model.body.boundingBox, tz = bb.min.z - 0.03, ty = type === 'car' ? 0.82 : type === 'scooter' ? 0.86 : 0.72;
+    const tx = type === 'scooter' ? [0] : [bb.min.x * 0.72, bb.max.x * 0.72];
+    const bg = merge(tx.map((x) => new THREE.PlaneGeometry(type === 'car' ? 0.32 : 0.2, 0.12).rotateY(Math.PI).translate(x, ty, tz)));
+    this.brakeMat = this.brakeMat || new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 0.25, 0.2), transparent: true, opacity: 0, depthWrite: false });
+    this.brakeLight = new THREE.Mesh(bg, this.brakeMat); this.bodyPivot.add(this.brakeLight);
     void occupied;
   }
   get forward() { return new THREE.Vector2(Math.sin(this.heading), Math.cos(this.heading)); }
@@ -245,6 +251,8 @@ export class Player {
     const acc = dt > 0 ? (fs - fs0) / dt : 0;
     this.dive = damp(this.dive || 0, clamp(acc * 0.006, -0.06, 0.05), 8, dt);
     this.slip = Math.abs(ls) + (input.handbrake && Math.abs(fs) > 5 ? 2 : 0);
+    const braking = (input.throttle < 0 && fs > 0.5) || (input.handbrake && Math.abs(fs) > 0.5);
+    if (this.brakeMat) this.brakeMat.opacity = damp(this.brakeMat.opacity, braking ? 1 : 0, braking ? 30 : 10, dt);
     this.bump = Math.max(0, this.bump - dt * 2.2);
     const roll = clamp(this.steer * fs * (this.type === 'scooter' ? -0.035 : 0.012), -0.4, 0.4);
     this.lean = damp(this.lean, roll, 6, dt);

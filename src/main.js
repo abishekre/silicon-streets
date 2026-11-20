@@ -389,6 +389,24 @@ async function init() {
   composer.insertPass(gtao, 1);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
+  // colour grade (in display space, one cheap pass): warmer at golden hour, cooler blue-teal shadows at night, a
+  // little flatter in the rain, a gentle S-curve and a soft vignette. Set per frame from the time of day.
+  const grade = new ShaderPass({
+    uniforms: { tDiffuse: { value: null }, warm: { value: 0 }, cool: { value: 0 }, sat: { value: 1.08 }, contrast: { value: 1.06 }, vig: { value: 0.22 } },
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `uniform sampler2D tDiffuse; uniform float warm, cool, sat, contrast, vig; varying vec2 vUv;
+      void main() {
+        vec3 c = texture2D(tDiffuse, vUv).rgb;
+        float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+        c = mix(vec3(l), c, sat);
+        c = clamp((c - 0.5) * contrast + 0.5, 0.0, 1.0);
+        c *= mix(vec3(1.0), vec3(1.08, 1.0, 0.88), warm * (0.4 + 0.6 * l));
+        c = mix(c, c * vec3(0.86, 0.97, 1.1), cool * (1.0 - l));
+        vec2 q = vUv - 0.5; c *= 1.0 - vig * dot(q, q) * 2.2;
+        gl_FragColor = vec4(c, 1.0);
+      }`,
+  });
+  composer.addPass(grade);
   // anti-aliasing after tone mapping: FXAA (cheapest) on Low, SMAA on Medium. MSAA (High/Ultra) happens in the render
   // target instead; on integrated graphics its resolve alone costs more than SMAA, so it's kept for dedicated GPUs.
   const fxaa = new ShaderPass(FXAAShader); composer.addPass(fxaa);
@@ -969,6 +987,9 @@ async function init() {
     scene.environmentIntensity = atm.envI;
     document.body.classList.toggle('driving', state.mode === 'drive');
     renderer.toneMappingExposure = state.mode === 'interior' ? 1 : atm.exposure;
+    { const G = grade.uniforms, inside = state.mode === 'interior';
+      G.warm.value = inside ? 0.25 : atm.dusk * 0.9 * (1 - ws.rain * 0.7); G.cool.value = inside ? 0 : atm.night * 0.55;
+      G.sat.value = 1.1 - ws.rain * 0.18 - atm.night * 0.05; G.contrast.value = 1.06 - ws.rain * 0.04; G.vig.value = ui.prefs.reduce ? 0.1 : 0.22; }
     bloom.strength = state.mode === 'interior' ? 0.35 : atm.bloom;
     // small, frequent env-map refreshes so reflections and ambient light change smoothly
     if (Math.abs(state.hours - envHours) > 0.05 || Math.abs(ws.cloud - envCloud) > 0.05) {

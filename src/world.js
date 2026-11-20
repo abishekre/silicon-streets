@@ -1279,7 +1279,7 @@ export function buildWorld(scene, data, opts = {}) {
     const h = env.hours ?? 20, late = h > 0.5 && h < 5 ? 0.4 : 1, office = h > 22 || h < 6 ? 0.45 : 1;
     M.bldA.emissiveIntensity = Lt * 1.1 * late; M.bldB.emissiveIntensity = Lt * 1.0 * office; M.glass.emissiveIntensity = Lt * 0.9 * office;
     M.landmark.emissiveIntensity = Lt * 0.22; if (M.inscription) M.inscription.emissiveIntensity = Lt * 0.35;
-    M.shop.emissiveIntensity = 0.06 + Lt * 0.9;
+    M.shop.emissiveIntensity = 0.06 + Lt * 0.9 * (h > 23.5 || h < 6 ? 0.35 : 1); // most shops shut by midnight
     M.sign.emissiveIntensity = M.poiSign.emissiveIntensity = 0.12 + Lt * 0.75;
     M.billboard.emissiveIntensity = 0.12 + Lt * 0.9;
     M.lampHead.color.copy(offLamp).lerp(onLamp, Lt);
