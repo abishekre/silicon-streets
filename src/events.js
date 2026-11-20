@@ -16,7 +16,7 @@ const SKIN = ['#8d5a3b', '#a8714a', '#6e4429'];
 
 export function createEvents({ scene, world, ui, audio, game, state }) {
   const G = world.graph, MAJOR = /primary|secondary|tertiary|trunk/;
-  let P = null, nextT = 0.6, joined = null; // the current procession; in-game hours until the next one
+  let P = null, nextT = 2.5, joined = null; // the current procession; in-game hours until the next one
   const W$ = game.wallet;
 
   // the float: a decorated flatbed with marigold garlands and a canopy

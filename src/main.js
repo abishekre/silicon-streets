@@ -619,8 +619,10 @@ async function init() {
         vehicle: [2.4, 'glass', 'crash'], barricade: [1.4, 'drum', 'thud'], bench: [1.2, 'wood', 'thud'], prop: [1.6, 'wood', 'thud'], cow: [0.8, null, 'thud'],
       };
       const [mul, debris] = SPEC[tag] || [2, 'concrete'];
-      const dmg = k * mul * (tag === 'vehicle' && hit && hit.v && hit.v.type === 'bus' ? 1.6 : 1) * (player.type === 'car' ? 0.7 : player.type === 'scooter' ? 1.3 : 1);
-      shake = Math.min(1.2, v / 10); audio.crash(Math.min(1, v / 10)); game.onCrash();
+      // arcade, not a sim: damage is forgiving; feedback scales with the hit (a scrape is a nudge, a wall is a jolt)
+      const dmg = 0.6 * k * mul * (tag === 'vehicle' && hit && hit.v && hit.v.type === 'bus' ? 1.6 : 1) * (player.type === 'car' ? 0.7 : player.type === 'scooter' ? 1.3 : 1);
+      shake = v < 6 ? v / 24 : Math.min(1.2, v / 10); audio.crash(Math.min(1, v / 10)); game.onCrash();
+      if (v > 8 && !ui.prefs.reduce) camera.fov += Math.min(7, (v - 8) * 0.8); // a punch of the lens; it eases back
       if (debris) fx.burst(debris, sx, 0.8, sz, Math.min(30, 6 + k * 3), { dx: player.vel.x, dz: player.vel.y, spread: 2 + k * 0.4 });
       if (v > 6 && tag !== 'tree' && tag !== 'cow') fx.burst('sparks', sx, 0.6, sz, Math.min(24, k * 3));
       if (tag === 'tree') fx.burst('leaves', p.x, 3.5, p.z, 20, { spread: 4, up: 1 });
@@ -1041,7 +1043,7 @@ async function init() {
     if (!state.paused && state.mode !== 'interior' && state.mode !== 'metro') dogs.update(dt, t, { mode: state.mode, player, walker: W.pos, walkSpeed: W.speed, lights: L, peds: people.peds, ...dogEvents });
     if (!state.paused && state.mode !== 'interior' && state.mode !== 'metro' && edges.near(f)) ui.toast('Road closed', 'Namma Metro Phase 3 work since 2017. Diversion ahead (there is no diversion).', 'cone');
     const rainHere = state.mode === 'interior' ? ws.rain * 0.3 : ws.rain;
-    audio.update(state.mode === 'drive' ? player.type : 'none', player.speed, ctl.throttle, rainHere, f.x, f.z, state.mode === 'drive' ? player.heading : W.yaw);
+    audio.update(state.mode === 'drive' ? player.type : 'none', player.speed, ctl.throttle, rainHere, f.x, f.z, state.mode === 'drive' ? player.heading : W.yaw, player.slip || 0);
     updateCamera(dt); mark('misc');
 
     if (state.mode !== 'interior') {

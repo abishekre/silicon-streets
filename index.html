@@ -420,6 +420,16 @@
     body.phone-on #hud, body.phone-on #touch { visibility: hidden; }
     #phoneBanner { top: 170px; } #nav.on ~ #phoneBanner { top: 236px; }
   }
+  /* short screens (a phone held sideways): keep the middle of the view clear; offers bottom right, one toast bottom left */
+  @media (max-height: 560px) {
+    #toasts { top: auto; bottom: 56px; left: 8px; right: auto; width: min(300px, 46vw); }
+    .toast:nth-child(n+2) { display: none; } .toast .b { -webkit-line-clamp: 2; }
+    #offer, #offer:not(.on), #card.compact { top: auto; bottom: 72px; left: auto; right: 8px; width: min(330px, 48vw); }
+    #phoneBanner { display: none; }
+    #dialogue { top: auto; bottom: 132px; } #prompt { bottom: 132px; }
+    #nav { top: 8px; left: auto; right: 132px; width: min(300px, 40vw); }
+    #objective { max-width: 46vw; }
+  }
 </style>
 </head>
 <body>

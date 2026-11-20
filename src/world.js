@@ -311,7 +311,22 @@ export function buildWorld(scene, data, opts = {}) {
           }
         }
         if (ya >= 3 || yb >= 3) quad3(bk, at(p, o, hw, bA), at(p, o, -hw, bA), at(q, u, -hw, bB), at(q, u, hw, bB), [0, -1, 0], 4, C_SLAB);
+        // lane markings on the deck: edge lines, and centre dashes on wide decks
+        const mk = B('marking'), yAt = (t) => ya + (yb - ya) * t + top + 0.015;
+        const line = (t0, t1, off, w) => {
+          const ax = p[0] + dx * len * t0, az = p[1] + dz * len * t0, bx = p[0] + dx * len * t1, bz = p[1] + dz * len * t1, nx = -dz, nz = dx;
+          quad3(mk, [ax + nx * (off + w), yAt(t0), az + nz * (off + w)], [ax + nx * (off - w), yAt(t0), az + nz * (off - w)], [bx + nx * (off - w), yAt(t1), bz + nz * (off - w)], [bx + nx * (off + w), yAt(t1), bz + nz * (off + w)], [0, 1, 0], 4, WHITE, true);
+        };
+        for (const sd of [-1, 1]) line(0, 1, sd * (r.hw - 0.45), 0.07);
+        if (r.w >= 7.5) for (let s = Math.ceil(acc0 / 7) * 7 - acc0; s + 3 < len; s += 7) line(s / len, (s + 3) / len, 0, 0.08);
       });
+      // street lamps along the parapet, one side, every 34 m
+      const acc0 = acc;
+      for (let t = (34 - acc % 34) % 34; t < len; t += 34) {
+        const y = ya + (yb - ya) * t / len; if (y < 0.8) continue;
+        const side = (Math.floor((acc + t) / 34) % 2) ? 1 : -1, nx = -dz * side, nz = dx * side;
+        chunkOf(p[0] + dx * t, p[1] + dz * t).lamps.push({ x: p[0] + dx * t + nx * (hw + 0.1), z: p[1] + dz * t + nz * (hw + 0.1), dx: -nx, dz: -nz, hw: r.hw, y: y + 0.07 });
+      }
       // pillars every 24 m where the deck is high enough to drive under
       for (let t = (24 - acc % 24) % 24; t < len; t += 24) {
         const y = ya + (yb - ya) * t / len; if (y < 3.2) continue;
@@ -1041,8 +1056,9 @@ export function buildWorld(scene, data, opts = {}) {
     cr = rng;
     for (const l of c.lamps) {
       q.setFromAxisAngle(vY, Math.atan2(l.dx, l.dz));
-      m4.compose(pv.set(l.x, 0, l.z), q, one); put(kit.pole, true); put(kit.head);
-      m4.compose(pv.set(l.x + l.dx * 2.6, 0.09, l.z + l.dz * 2.6), q, one); put(kit.pool);
+      const ly = l.y || 0; // lamps on a flyover stand on the deck
+      m4.compose(pv.set(l.x, ly, l.z), q, one); put(kit.pole, true); put(kit.head);
+      m4.compose(pv.set(l.x + l.dx * 2.6, ly + 0.09, l.z + l.dz * 2.6), q, one); put(kit.pool);
     }
     if (c.cables.length) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(c.cables, 3)); det.push(new THREE.LineSegments(g, M.cable)); }
     for (const [x, y, z] of c.bulbs) { m4.makeTranslation(x, y, z); put(kit.bulb); }

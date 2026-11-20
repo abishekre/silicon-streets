@@ -194,7 +194,9 @@ export class Player {
     const surface = world.surfaceAt(this.pos.x, this.pos.z);
     // grass slows you down, flood water a lot more
     const max = st.max * (this.health < 35 ? 0.65 : 1) * (surface === 'grass' ? 0.55 : 1) * (1 - Math.min(0.75, (this.waterDepth || 0) * 2.2));
-    this.steer = damp(this.steer, input.steer, 8, dt);
+    // keyboard steering: less lock as you go faster (stable on MG Road, nimble in the lanes), quick back to centre
+    const fs0 = fs, lock = 1 - Math.min(0.45, Math.abs(fs) / 36);
+    this.steer = damp(this.steer, input.steer * lock, input.steer ? 7 : 12, dt);
     // a battered vehicle pulls to one side and wobbles; a broken one won't go
     if (this.health < 35) this.steer += Math.sin(performance.now() * 0.006) * 0.12 + 0.05;
     // broken: it won't go
@@ -239,6 +241,10 @@ export class Player {
       }
     }
     this.speed = fs; this.surface = surface;
+    // weight transfer: the nose dips when you brake and lifts when you pull away; slip is how much you're sliding
+    const acc = dt > 0 ? (fs - fs0) / dt : 0;
+    this.dive = damp(this.dive || 0, clamp(acc * 0.006, -0.06, 0.05), 8, dt);
+    this.slip = Math.abs(ls) + (input.handbrake && Math.abs(fs) > 5 ? 2 : 0);
     this.bump = Math.max(0, this.bump - dt * 2.2);
     const roll = clamp(this.steer * fs * (this.type === 'scooter' ? -0.035 : 0.012), -0.4, 0.4);
     this.lean = damp(this.lean, roll, 6, dt);
@@ -249,7 +255,7 @@ export class Player {
   syncMesh(surface = 'road', fs = 0) {
     this.group.position.set(this.pos.x, this.elev, this.pos.z);
     this.group.rotation.set(-this.pitch, this.heading, 0, 'YXZ');
-    this.bodyPivot.rotation.z = this.lean + this.dentZ; this.bodyPivot.rotation.x = this.dentX;
+    this.bodyPivot.rotation.z = this.lean + this.dentZ; this.bodyPivot.rotation.x = this.dentX - (this.dive || 0);
     this.bodyPivot.position.y = Math.abs(Math.sin(this.bump * 18)) * 0.12 * this.bump + (surface === 'grass' ? Math.sin(performance.now() * 0.03) * 0.015 * Math.min(1, Math.abs(fs) / 5) : 0);
   }
   damage(d) {

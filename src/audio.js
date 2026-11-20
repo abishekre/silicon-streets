@@ -1,6 +1,6 @@
 // All sounds are synthesized with Web Audio — no files to download.
 export function createAudio() {
-  let ctx = null, master, engine, engineGain, engineFilter, lfo, lfoGain, rainGain, rainFilter, noiseBuf, crowdGain, radioGain;
+  let ctx = null, master, engine, engineGain, engineFilter, lfo, lfoGain, rainGain, rainFilter, noiseBuf, crowdGain, radioGain, tyreGain, roadGain;
   let muted = false;
   // mixer: every sound goes to a bus (master · radio · traffic · ambience · horn), each with its own volume from Settings
   const vol = { master: 0.7, radio: 1, traffic: 1, ambience: 1, horn: 1 };
@@ -27,6 +27,9 @@ export function createAudio() {
     lfo.connect(lfoGain); lfoGain.connect(engineGain.gain);
     engine.connect(engineFilter); engineFilter.connect(engineGain); engineGain.connect(master);
     engine.start(); lfo.start();
+    // tyres: a squeal when you slide, and road rumble that grows with speed
+    const loop = (type, f, q, g) => { const n = ctx.createBufferSource(); n.buffer = noiseBuf; n.loop = true; const fl = ctx.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q; const gn = ctx.createGain(); gn.gain.value = 0; n.connect(fl); fl.connect(gn); gn.connect(g); n.start(); return gn; };
+    tyreGain = loop('bandpass', 2300, 7, master); roadGain = loop('lowpass', 260, 0.7, master);
     // rain bed
     const rn = ctx.createBufferSource(); rn.buffer = noiseBuf; rn.loop = true;
     rainFilter = ctx.createBiquadFilter(); rainFilter.type = 'bandpass'; rainFilter.frequency.value = 1400; rainFilter.Q.value = 0.4;
@@ -88,13 +91,19 @@ export function createAudio() {
   function moo() { via('ambience', mooNow); }
   function mooNow() { if (!ctx || muted) return; const t = ctx.currentTime; const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(140, t); o.frequency.linearRampToValueAtTime(95, t + 0.9); const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 600; const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.18, t + 0.1); g.gain.linearRampToValueAtTime(0, t + 1); o.connect(f); f.connect(g); g.connect(out); o.start(t); o.stop(t + 1.05); }
 
-  function update(type, speed, throttle, rain, lx, lz, yaw) {
+  function update(type, speed, throttle, rain, lx, lz, yaw, slip = 0) {
     listener.x = lx; listener.z = lz; listener.yaw = yaw;
     if (!ctx) return;
     const now = ctx.currentTime;
     const s = Math.abs(speed);
     const base = type === 'auto' ? 38 : type === 'scooter' ? 70 : 55;
-    engine.frequency.setTargetAtTime(base + s * (type === 'car' ? 4 : 5.5) + throttle * 8, now, 0.08);
+    // scooters and cars climb through the gears (the pitch rises, drops at each change); the auto just thrums louder
+    const span = type === 'car' ? 8 : 6.5, gear = Math.floor(s / span), inGear = (s % span) / span;
+    const rev = type === 'auto' ? base + s * 5.5 : base * (1 + inGear * 1.3 + Math.min(gear, 4) * 0.12);
+    engine.frequency.setTargetAtTime(rev + throttle * 8, now, 0.08);
+    const on = !muted && type !== 'none';
+    tyreGain.gain.setTargetAtTime(on && s > 4 ? Math.min(0.1, Math.max(0, slip - 1.5) * 0.04) : 0, now, 0.06);
+    roadGain.gain.setTargetAtTime(on ? Math.min(0.07, s * 0.004) : 0, now, 0.2);
     lfo.frequency.setTargetAtTime(type === 'auto' ? 9 + s * 1.4 : 30 + s * 2, now, 0.1);
     engineFilter.frequency.setTargetAtTime(300 + s * 40 + throttle * 300, now, 0.1);
     const ev = muted || type === 'none' ? 0 : (type === 'auto' ? 0.05 : 0.035) + Math.abs(throttle) * 0.03;
